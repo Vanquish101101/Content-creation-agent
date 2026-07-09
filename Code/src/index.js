@@ -23,11 +23,10 @@ function requireEnv(name) {
     serviceKey: requireEnv('SUPABASE_SERVICE_KEY')
   });
 
-  // R2 — опционален на этом этапе: ни одна реализованная пока генерация
-  // (только text, Слайс 2) не сохраняет файлы. Настраивается заранее, чтобы
-  // Слайсы 4-6 (фото/видео/аудио) могли подключить его через routeDeps без
-  // изменений в index.js — если переменные не заданы, r2 остаётся null и
-  // текстовая генерация продолжает работать как прежде.
+  // R2 — опционален: text (Слайс 2) не сохраняет файлы и не нуждается в нём.
+  // image/video/audio (Слайсы 4-6) все требуют R2 для загрузки результата —
+  // без переменных окружения r2 остаётся null, эти задачи будут падать в
+  // своём каскаде с понятной ошибкой, text продолжает работать как прежде.
   const r2EnvVars = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'];
   const r2Configured = r2EnvVars.every((name) => process.env[name]);
   const r2 = r2Configured
@@ -39,18 +38,18 @@ function requireEnv(name) {
       })
     : null;
   if (!r2Configured) {
-    console.warn('[index] R2 not configured — image/video/audio slices (4-6) will fail to store files once implemented; text generation is unaffected');
+    console.warn('[index] R2 not configured — image/video/audio generation will fail to store files; text generation is unaffected');
   }
 
-  // deps namespaced по типу контента — text/image/video используют РАЗНЫЕ
-  // ключи (OpenRouter/Runway/MiniMax), общий плоский объект deps их бы
-  // перепутал (см. regression-тест `route.test.js`, "does not leak
-  // deps.text.apiKey..."). RUNWAY_API_KEY/MINIMAX_API_KEY опциональны, как и
-  // R2 — без них соответствующие задачи будут падать в своём каскаде с
-  // понятной ошибкой "apiKey is required", оркестратор помечает такую запись
-  // как error, не роняя процесс; text продолжает работать. audio (Слайс 6)
-  // пока не реализован вообще — routeByContentType бросает "not implemented
-  // yet".
+  // deps namespaced по типу контента — text/image/video/audio используют
+  // РАЗНЫЕ ключи, общий плоский объект deps их бы перепутал (см.
+  // regression-тест `route.test.js`, "does not leak deps.text.apiKey...").
+  // Все, кроме OPENROUTER_API_KEY (Слайс 2, всегда нужен для текста),
+  // опциональны, как и R2 — без них соответствующие задачи будут падать в
+  // своём каскаде с понятной ошибкой "... is required", оркестратор
+  // помечает такую запись как error, не роняя процесс; text продолжает
+  // работать. Все 4 типа контента из MVP-скопа (Слайсы 2, 4-6) теперь
+  // реализованы.
   const orchestrator = createGenerationOrchestrator({
     db,
     routeDeps: {
@@ -64,6 +63,12 @@ function requireEnv(name) {
       },
       video: {
         apiKey: process.env.MINIMAX_API_KEY || undefined,
+        r2
+      },
+      audio: {
+        deepgramApiKey: process.env.DEEPGRAM_API_KEY || undefined,
+        elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || undefined,
+        elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID || undefined,
         r2
       }
     }

@@ -38,10 +38,18 @@ test('routes "video" to a working generator function using deps.video (not deps.
   assert.equal(typeof generate, 'function');
 });
 
-test('throws a descriptive not-implemented error for "audio"', () => {
-  assert.throws(() => routeByContentType('audio', {}), /not implemented yet/);
+test('routes "audio" to a working generator function using deps.audio (not deps.video)', () => {
+  const generate = routeByContentType('audio', {
+    video: { apiKey: 'minimax-key', r2: {} },
+    audio: { deepgramApiKey: 'd', elevenLabsApiKey: 'e', elevenLabsVoiceId: 'v', r2: {} }
+  });
+
+  assert.equal(typeof generate, 'function');
 });
 
 test('throws for an unknown content type', () => {
-  assert.throws(() => routeByContentType('carousel', {}), /not implemented yet/);
+  // text/image/video/audio (весь MVP-скоп из «04. Брейншторм», §1) теперь
+  // реализованы — "not implemented yet" больше не подходящая формулировка ни
+  // для одного реального типа контента, только для truly unknown.
+  assert.throws(() => routeByContentType('carousel', {}), /unknown content_type/);
 });
