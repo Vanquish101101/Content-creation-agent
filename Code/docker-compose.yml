@@ -1,0 +1,26 @@
+# Content creation agent/Code/docker-compose.yml
+name: content-creation-agent
+
+services:
+  content-creation-agent:
+    build: .
+    image: content-creation-agent:v0.1.0
+    container_name: content-creation-agent
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Переопределяет .env: внутри контейнера Redis доступен по имени сервиса
+      # на общей сети, а не по localhost (тот — для локального запуска вне Docker).
+      - REDIS_URL=redis://redis:6379/0
+      - MCP_HTTP_PORT=7303
+    ports:
+      - "7303:7303"   # MCP Streamable HTTP — доступен и с хоста для проверки (тот же паттерн, что у Агента 3 на 7302)
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - marketing-agency-net
+
+networks:
+  marketing-agency-net:
+    name: marketing-agency-net
+    external: true
