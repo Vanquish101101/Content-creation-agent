@@ -2,6 +2,7 @@
 // Дедупликация wizard-запросов через content_creation_agent.processed_wizard_requests
 // (UNIQUE(telegram_id, wizard_hash)) — не генерировать дважды один и тот же запрос.
 // См. «07. Архитектура (Бекенд).md», §6.
+import { isNotFoundError } from '../db/errors.js';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -14,6 +15,9 @@ export async function isWizardProcessed(db, telegramId, wizardHash) {
     .single();
 
   if (error) {
+    if (isNotFoundError(error)) {
+      return false;
+    }
     throw new Error(`isWizardProcessed: ${error.message}`);
   }
 

@@ -18,8 +18,15 @@ test('isWizardProcessed returns true when a matching row exists', async () => {
 });
 
 test('isWizardProcessed returns false when no matching row exists', async () => {
+  // Найдено живой проверкой 2026-07-10: реальный supabase-js .single() на
+  // пустом результате возвращает НЕ {data:null,error:null}, а ошибку PGRST116
+  // ("Cannot coerce the result to a single JSON object") — именно так, не
+  // просто null, ведёт себя настоящий PostgREST.
   const db = makeFakeDb({
-    processed_wizard_requests: () => ({ data: null, error: null })
+    processed_wizard_requests: () => ({
+      data: null,
+      error: { message: 'Cannot coerce the result to a single JSON object', code: 'PGRST116' }
+    })
   });
 
   const processed = await isWizardProcessed(db, 123, 'abc');

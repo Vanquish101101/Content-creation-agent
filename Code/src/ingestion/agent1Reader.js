@@ -7,6 +7,8 @@
 // дефолтной схемы клиента и падает с PGRST205 "table not found" (тот же класс
 // бага, что уже дважды случался у Агента 3 при чтении чужих схем — см. «01.
 // Идея.md»).
+import { isNotFoundError } from '../db/errors.js';
+
 export async function fetchWizardSettings(db, telegramId) {
   const { data, error } = await db
     .schema('intelligence_agent')
@@ -16,6 +18,9 @@ export async function fetchWizardSettings(db, telegramId) {
     .single();
 
   if (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
     throw new Error(`fetchWizardSettings: ${error.message}`);
   }
 
