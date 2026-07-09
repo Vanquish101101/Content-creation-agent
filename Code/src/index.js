@@ -42,14 +42,15 @@ function requireEnv(name) {
     console.warn('[index] R2 not configured — image/video/audio slices (4-6) will fail to store files once implemented; text generation is unaffected');
   }
 
-  // deps namespaced по типу контента — text (OpenRouter) и image (Runway)
-  // используют РАЗНЫЕ ключи, общий плоский объект deps их бы перепутал (см.
-  // regression-тест `route.test.js`, "does not leak deps.text.apiKey...").
-  // RUNWAY_API_KEY опционален, как и R2 — без него image-задачи будут падать
-  // в createImageCascade с понятной ошибкой "apiKey is required", оркестратор
-  // помечает такую запись как error, не роняя процесс; text продолжает
-  // работать. video/audio (Слайсы 5-6) пока не реализованы вообще —
-  // routeByContentType бросает "not implemented yet".
+  // deps namespaced по типу контента — text/image/video используют РАЗНЫЕ
+  // ключи (OpenRouter/Runway/MiniMax), общий плоский объект deps их бы
+  // перепутал (см. regression-тест `route.test.js`, "does not leak
+  // deps.text.apiKey..."). RUNWAY_API_KEY/MINIMAX_API_KEY опциональны, как и
+  // R2 — без них соответствующие задачи будут падать в своём каскаде с
+  // понятной ошибкой "apiKey is required", оркестратор помечает такую запись
+  // как error, не роняя процесс; text продолжает работать. audio (Слайс 6)
+  // пока не реализован вообще — routeByContentType бросает "not implemented
+  // yet".
   const orchestrator = createGenerationOrchestrator({
     db,
     routeDeps: {
@@ -59,6 +60,10 @@ function requireEnv(name) {
       },
       image: {
         apiKey: process.env.RUNWAY_API_KEY || undefined,
+        r2
+      },
+      video: {
+        apiKey: process.env.MINIMAX_API_KEY || undefined,
         r2
       }
     }

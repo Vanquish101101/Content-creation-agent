@@ -29,8 +29,13 @@ test('does not leak deps.text.apiKey into the image cascade', () => {
   );
 });
 
-test('throws a descriptive not-implemented error for "video"', () => {
-  assert.throws(() => routeByContentType('video', {}), /not implemented yet/);
+test('routes "video" to a working generator function using deps.video (not deps.image)', () => {
+  const generate = routeByContentType('video', {
+    image: { apiKey: 'runway-key', r2: {} },
+    video: { apiKey: 'minimax-key', r2: {} }
+  });
+
+  assert.equal(typeof generate, 'function');
 });
 
 test('throws a descriptive not-implemented error for "audio"', () => {
