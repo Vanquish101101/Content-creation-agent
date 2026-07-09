@@ -5,6 +5,7 @@ import { createIntakeHandler } from './inbox/intake.js';
 import { subscribeToInbox } from './inbox/subscribe.js';
 import { createHandoffPoller } from './inbox/poller.js';
 import { createGenerationOrchestrator } from './generation/generate.js';
+import { createR2Client } from './storage/r2Client.js';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -22,6 +23,25 @@ function requireEnv(name) {
     serviceKey: requireEnv('SUPABASE_SERVICE_KEY')
   });
 
+  // R2 — опционален на этом этапе: ни одна реализованная пока генерация
+  // (только text, Слайс 2) не сохраняет файлы. Настраивается заранее, чтобы
+  // Слайсы 4-6 (фото/видео/аудио) могли подключить его через routeDeps без
+  // изменений в index.js — если переменные не заданы, r2 остаётся null и
+  // текстовая генерация продолжает работать как прежде.
+  const r2EnvVars = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'];
+  const r2Configured = r2EnvVars.every((name) => process.env[name]);
+  const r2 = r2Configured
+    ? createR2Client({
+        accountId: process.env.R2_ACCOUNT_ID,
+        accessKeyId: process.env.R2_ACCESS_KEY_ID,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+        bucket: process.env.R2_BUCKET
+      })
+    : null;
+  if (!r2Configured) {
+    console.warn('[index] R2 not configured — image/video/audio slices (4-6) will fail to store files once implemented; text generation is unaffected');
+  }
+
   // Слайс 2: только content_type === 'text' реально генерирует — image/video/
   // audio (Слайсы 4-6) пока падают в routeByContentType с понятной ошибкой
   // "not implemented yet", оркестратор корректно помечает такую запись как
@@ -30,7 +50,8 @@ function requireEnv(name) {
     db,
     routeDeps: {
       apiKey: requireEnv('OPENROUTER_API_KEY'),
-      heliconeApiKey: process.env.HELICONE_API_KEY || undefined
+      heliconeApiKey: process.env.HELICONE_API_KEY || undefined,
+      r2
     }
   });
 

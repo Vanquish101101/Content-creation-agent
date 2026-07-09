@@ -27,10 +27,10 @@ export async function markProcessing(db, id) {
   }
 }
 
-export async function markDone(db, id, { costUsd, metadata }) {
+export async function markDone(db, id, { costUsd, metadata, r2Url = null }) {
   const { error } = await db
     .from('generated_content')
-    .update({ status: 'done', cost_usd: costUsd, metadata })
+    .update({ status: 'done', cost_usd: costUsd, metadata, r2_url: r2Url })
     .eq('id', id);
   if (error) {
     throw new Error(`markDone: ${error.message}`);

@@ -59,6 +59,28 @@ test('markDone updates status, cost_usd, and metadata', async () => {
   await markDone(db, 'gc-1', { costUsd: 0.003, metadata: { tier: 'cheap', model: 'anthropic/claude-haiku-4-5' } });
 });
 
+test('markDone persists r2Url as r2_url when provided (image/video/audio slices)', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.r2_url, 'gc-1/video.mp4');
+      return { data: null, error: null };
+    }
+  });
+
+  await markDone(db, 'gc-1', { costUsd: 0.5, metadata: {}, r2Url: 'gc-1/video.mp4' });
+});
+
+test('markDone defaults r2_url to null when not provided (text slice)', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.r2_url, null);
+      return { data: null, error: null };
+    }
+  });
+
+  await markDone(db, 'gc-1', { costUsd: 0.003, metadata: {} });
+});
+
 test('markError updates status to error with the failure message in metadata', async () => {
   const db = makeFakeDb({
     generated_content: (state) => {

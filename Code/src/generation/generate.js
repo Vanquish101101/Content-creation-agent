@@ -20,7 +20,8 @@ export function createGenerationOrchestrator({ db, route = routeByContentType, r
       const result = await generate(job.wizard);
       await markDone(db, id, {
         costUsd: result.costUsd,
-        metadata: { tier: result.tier, model: result.model, text: result.text }
+        metadata: { tier: result.tier, model: result.model, text: result.text },
+        r2Url: result.r2Url ?? null
       });
       return { id, status: 'done', ...result };
     } catch (err) {

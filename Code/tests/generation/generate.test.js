@@ -54,6 +54,17 @@ test('passes job.wizard.content_type and routeDeps to route()', async () => {
   assert.deepEqual(calledWith.deps, { apiKey: 'key-1' });
 });
 
+test('passes result.r2Url through to markDone when the cascade uploaded a file (image/video/audio)', async () => {
+  const updates = [];
+  const db = makeDb(updates);
+  const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'runway/gen4_turbo', r2Url: 'gc-1/video.mp4' });
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(updates[1].r2_url, 'gc-1/video.mp4');
+});
+
 test('marks the record as error and rethrows when generation fails', async () => {
   const updates = [];
   const db = makeDb(updates);
