@@ -6,6 +6,8 @@ import { subscribeToInbox } from './inbox/subscribe.js';
 import { createHandoffPoller } from './inbox/poller.js';
 import { createGenerationOrchestrator } from './generation/generate.js';
 import { createR2Client } from './storage/r2Client.js';
+import { createInformationAnalysisClient } from './mcp-clients/informationAnalysisClient.js';
+import { createTrendEnrichment } from './enrichment/enrichWithTrends.js';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -50,8 +52,22 @@ function requireEnv(name) {
   // помечает такую запись как error, не роняя процесс; text продолжает
   // работать. Все 4 типа контента из MVP-скопа (Слайсы 2, 4-6) теперь
   // реализованы.
+  // Обогащение трендами (Слайс 7) — опционально: без INFORMATION_ANALYSIS_AGENT_URL
+  // enrich не передаётся вовсе, generateContent просто ставит trendContext: null
+  // (см. generate.js) — обычная генерация без обогащения, ничего не падает.
+  const enrich = process.env.INFORMATION_ANALYSIS_AGENT_URL
+    ? createTrendEnrichment({
+        db,
+        analysisClient: createInformationAnalysisClient({ baseUrl: process.env.INFORMATION_ANALYSIS_AGENT_URL })
+      })
+    : undefined;
+  if (!enrich) {
+    console.warn('[index] INFORMATION_ANALYSIS_AGENT_URL not configured — trend enrichment (Слайс 7) disabled, generation proceeds without it');
+  }
+
   const orchestrator = createGenerationOrchestrator({
     db,
+    enrich,
     routeDeps: {
       text: {
         apiKey: requireEnv('OPENROUTER_API_KEY'),
@@ -90,9 +106,12 @@ function requireEnv(name) {
         .catch((err) => console.error('[index] handleWizardJob (redis) failed:', err.message));
     },
     onDigestReady: (event) => {
-      // Опциональное обогащение трендами (см. «07. Архитектура», §5) — не
-      // реализовано (Слайс 7), событие пока просто логируется.
-      console.log(`[index] digest_ready received for run_id=${event.run_id} — trend enrichment not implemented yet (Слайс 7)`);
+      // Обогащение трендами (Слайс 7) — не реактивное: не запускается по
+      // этому событию, а вызывается по требованию внутри generateContent
+      // (см. enrichWithTrends.js), когда wizard явно просит опору на тренды.
+      // Событие только логируется — держим подписку живой на случай будущего
+      // расширения (например, предзагрузка/кэш последнего run_id).
+      console.log(`[index] digest_ready received for run_id=${event.run_id} (informational only — enrichment is pull-based, see Слайс 7)`);
     }
   });
 

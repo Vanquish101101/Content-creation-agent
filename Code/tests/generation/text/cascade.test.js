@@ -81,6 +81,42 @@ test('throws when both cheap and main tiers fail', async () => {
   await assert.rejects(() => generateText(WIZARD), /HTTP 500/);
 });
 
+test('includes trendContext hooks/triggers/offers in the prompt when present', async () => {
+  const fetchImpl = fakeFetch([
+    { body: { choices: [{ message: { content: 'Пост в трендовом стиле' } }], usage: { cost: 0.0003 } } }
+  ]);
+  const generateText = createTextCascade({ apiKey: 'test-key', fetchImpl });
+  const wizardWithTrends = {
+    ...WIZARD,
+    trendContext: {
+      hooks: ['Ты не поверишь, что произошло дальше'],
+      triggers: ['срочность'],
+      offers: ['скидка 20%'],
+      viral_reasons: ['неожиданный твист'],
+      content_ideas: ['формат до/после']
+    }
+  };
+
+  await generateText(wizardWithTrends);
+
+  const body = JSON.parse(fetchImpl.calls[0].options.body);
+  assert.match(body.messages[0].content, /Ты не поверишь, что произошло дальше/);
+  assert.match(body.messages[0].content, /срочность/);
+  assert.match(body.messages[0].content, /скидка 20%/);
+});
+
+test('does not mention trend context in the prompt when trendContext is null', async () => {
+  const fetchImpl = fakeFetch([
+    { body: { choices: [{ message: { content: 'Обычный пост' } }], usage: { cost: 0.0002 } } }
+  ]);
+  const generateText = createTextCascade({ apiKey: 'test-key', fetchImpl });
+
+  await generateText({ ...WIZARD, trendContext: null });
+
+  const body = JSON.parse(fetchImpl.calls[0].options.body);
+  assert.doesNotMatch(body.messages[0].content, /хук|триггер|оффер/i);
+});
+
 test('routes through Helicone proxy when heliconeApiKey is set', async () => {
   const fetchImpl = fakeFetch([
     { body: { choices: [{ message: { content: 'Пост' } }], usage: { cost: 0.0002 } } }

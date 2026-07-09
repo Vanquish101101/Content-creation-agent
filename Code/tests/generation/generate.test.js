@@ -69,6 +69,49 @@ test('passes job.telegram_id through into the wizard object given to the generat
   assert.equal(generatorCalledWith.content_type, 'text');
 });
 
+test('attaches enrich(wizard) result as wizard.trendContext when an enrich function is provided', async () => {
+  const db = makeDb([]);
+  let generatorCalledWith = null;
+  const fakeRoute = () => async (wizard) => {
+    generatorCalledWith = wizard;
+    return { costUsd: 0, tier: 'cheap', model: 'm' };
+  };
+  const enrich = async () => ({ hooks: ['x'], triggers: [], offers: [], viral_reasons: [], content_ideas: [] });
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, enrich });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.deepEqual(generatorCalledWith.trendContext, { hooks: ['x'], triggers: [], offers: [], viral_reasons: [], content_ideas: [] });
+});
+
+test('wizard.trendContext is null when enrich is not provided', async () => {
+  const db = makeDb([]);
+  let generatorCalledWith = null;
+  const fakeRoute = () => async (wizard) => {
+    generatorCalledWith = wizard;
+    return { costUsd: 0, tier: 'cheap', model: 'm' };
+  };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(generatorCalledWith.trendContext, null);
+});
+
+test('wizard.trendContext is null when enrich() itself returns null (no trend request or unreachable Agent 3)', async () => {
+  const db = makeDb([]);
+  let generatorCalledWith = null;
+  const fakeRoute = () => async (wizard) => {
+    generatorCalledWith = wizard;
+    return { costUsd: 0, tier: 'cheap', model: 'm' };
+  };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, enrich: async () => null });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(generatorCalledWith.trendContext, null);
+});
+
 test('passes result.r2Url through to markDone when the cascade uploaded a file (image/video/audio)', async () => {
   const updates = [];
   const db = makeDb(updates);

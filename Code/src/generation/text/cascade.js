@@ -75,6 +75,26 @@ function buildPrompt(wizard) {
 Формат: ${wizard.format}
 Стиль подачи: ${wizard.style}
 Задача: ${wizard.description}
-
+${buildTrendSection(wizard.trendContext)}
 Напиши готовый текст поста под эту задачу. Ответ — только текст поста, без пояснений и заголовков.`;
+}
+
+// Обогащение трендами (Слайс 7) — используем структуру референсного
+// вирусного контента (хук/триггер/оффер/причина виральности), не его
+// буквальное содержание — сохраняем механику, применяем к материалу
+// пользователя. См. «02. Анализ», §2.4 (Hook–Retention–Payoff).
+function buildTrendSection(trendContext) {
+  if (!trendContext) {
+    return '';
+  }
+  const parts = [];
+  if (trendContext.hooks?.length) parts.push(`Хук (открывающая фраза, похожий стиль): ${trendContext.hooks.join('; ')}`);
+  if (trendContext.triggers?.length) parts.push(`Триггеры вовлечения: ${trendContext.triggers.join('; ')}`);
+  if (trendContext.offers?.length) parts.push(`Оффер/призыв: ${trendContext.offers.join('; ')}`);
+  if (trendContext.viral_reasons?.length) parts.push(`Что делает контент виральным: ${trendContext.viral_reasons.join('; ')}`);
+  if (trendContext.content_ideas?.length) parts.push(`Идеи подачи: ${trendContext.content_ideas.join('; ')}`);
+  if (!parts.length) {
+    return '';
+  }
+  return `\nОриентируйся на структуру похожего успешного контента (сохраняй механику, не копируй дословно):\n${parts.join('\n')}\n`;
 }

@@ -5,7 +5,7 @@
 import { routeByContentType } from '../router/route.js';
 import { createPendingRecord, markProcessing, markDone, markError } from './persistence.js';
 
-export function createGenerationOrchestrator({ db, route = routeByContentType, routeDeps } = {}) {
+export function createGenerationOrchestrator({ db, route = routeByContentType, routeDeps, enrich } = {}) {
   async function generateContent(job) {
     const id = await createPendingRecord(db, {
       telegramId: job.telegram_id,
@@ -16,8 +16,13 @@ export function createGenerationOrchestrator({ db, route = routeByContentType, r
     await markProcessing(db, id);
 
     try {
+      // Обогащение трендами (Слайс 7) — опционально, best-effort: enrich()
+      // сам решает, нужно ли оно (wantsTrendEnrichment) и никогда не бросает
+      // исключение (см. enrichWithTrends.js) — здесь просто null, если enrich
+      // не передан вообще (например, MCP Агента 3 не настроен).
+      const trendContext = enrich ? await enrich(job.wizard) : null;
       const generate = route(job.wizard.content_type, routeDeps);
-      const result = await generate({ ...job.wizard, telegram_id: job.telegram_id });
+      const result = await generate({ ...job.wizard, telegram_id: job.telegram_id, trendContext });
       await markDone(db, id, {
         costUsd: result.costUsd,
         metadata: { tier: result.tier, model: result.model, text: result.text },
