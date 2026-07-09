@@ -17,7 +17,7 @@ export function createGenerationOrchestrator({ db, route = routeByContentType, r
 
     try {
       const generate = route(job.wizard.content_type, routeDeps);
-      const result = await generate(job.wizard);
+      const result = await generate({ ...job.wizard, telegram_id: job.telegram_id });
       await markDone(db, id, {
         costUsd: result.costUsd,
         metadata: { tier: result.tier, model: result.model, text: result.text },

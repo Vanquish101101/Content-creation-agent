@@ -54,6 +54,21 @@ test('passes job.wizard.content_type and routeDeps to route()', async () => {
   assert.deepEqual(calledWith.deps, { apiKey: 'key-1' });
 });
 
+test('passes job.telegram_id through into the wizard object given to the generator (needed for R2 key naming)', async () => {
+  const db = makeDb([]);
+  let generatorCalledWith = null;
+  const fakeRoute = () => async (wizard) => {
+    generatorCalledWith = wizard;
+    return { costUsd: 0, tier: 'cheap', model: 'm' };
+  };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(generatorCalledWith.telegram_id, 123);
+  assert.equal(generatorCalledWith.content_type, 'text');
+});
+
 test('passes result.r2Url through to markDone when the cascade uploaded a file (image/video/audio)', async () => {
   const updates = [];
   const db = makeDb(updates);
