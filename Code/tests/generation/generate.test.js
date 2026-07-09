@@ -1,0 +1,68 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { makeFakeDb } from '../helpers/fakeSupabase.js';
+import { createGenerationOrchestrator } from '../../src/generation/generate.js';
+
+const JOB = {
+  telegram_id: 123,
+  wizard_hash: 'abc',
+  wizard: { network: 'instagram', content_type: 'text', format: '916', style: 'expert', description: 'test' },
+  mode: 'content',
+  moderation_mode: false
+};
+
+function makeDb(recordedUpdates) {
+  return makeFakeDb({
+    generated_content: (state) => {
+      if (state.operation === 'insert') {
+        return { data: { id: 'gc-1' }, error: null };
+      }
+      recordedUpdates.push(state.payload);
+      return { data: null, error: null };
+    }
+  });
+}
+
+test('runs the full pipeline: pending -> processing -> done on success', async () => {
+  const updates = [];
+  const db = makeDb(updates);
+  const fakeRoute = () => async () => ({ text: 'Готовый пост', costUsd: 0.002, tier: 'cheap', model: 'anthropic/claude-haiku-4-5' });
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute });
+
+  const result = await orchestrator.generateContent(JOB);
+
+  assert.equal(result.id, 'gc-1');
+  assert.equal(result.status, 'done');
+  assert.equal(updates[0].status, 'processing');
+  assert.equal(updates[1].status, 'done');
+  assert.equal(updates[1].cost_usd, 0.002);
+  assert.equal(updates[1].metadata.text, 'Готовый пост');
+});
+
+test('passes job.wizard.content_type and routeDeps to route()', async () => {
+  const db = makeDb([]);
+  let calledWith = null;
+  const fakeRoute = (contentType, deps) => {
+    calledWith = { contentType, deps };
+    return async () => ({ text: 'x', costUsd: 0, tier: 'cheap', model: 'm' });
+  };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, routeDeps: { apiKey: 'key-1' } });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(calledWith.contentType, 'text');
+  assert.deepEqual(calledWith.deps, { apiKey: 'key-1' });
+});
+
+test('marks the record as error and rethrows when generation fails', async () => {
+  const updates = [];
+  const db = makeDb(updates);
+  const fakeRoute = () => async () => { throw new Error('LLM HTTP 500'); };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute });
+
+  await assert.rejects(() => orchestrator.generateContent(JOB), /LLM HTTP 500/);
+
+  assert.equal(updates[0].status, 'processing');
+  assert.equal(updates[1].status, 'error');
+  assert.equal(updates[1].metadata.error, 'LLM HTTP 500');
+});

@@ -1,0 +1,72 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { makeFakeDb } from '../helpers/fakeSupabase.js';
+import { createPendingRecord, markProcessing, markDone, markError } from '../../src/generation/persistence.js';
+
+test('createPendingRecord inserts a pending row and returns its id', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.operation, 'insert');
+      assert.deepEqual(state.payload, {
+        telegram_id: 123,
+        wizard_hash: 'abc',
+        type: 'text',
+        status: 'pending'
+      });
+      return { data: { id: 'gc-1' }, error: null };
+    }
+  });
+
+  const id = await createPendingRecord(db, { telegramId: 123, wizardHash: 'abc', type: 'text' });
+
+  assert.equal(id, 'gc-1');
+});
+
+test('createPendingRecord throws when the insert fails', async () => {
+  const db = makeFakeDb({
+    generated_content: () => ({ data: null, error: { message: 'connection reset' } })
+  });
+
+  await assert.rejects(
+    () => createPendingRecord(db, { telegramId: 123, wizardHash: 'abc', type: 'text' }),
+    /connection reset/
+  );
+});
+
+test('markProcessing updates the row status to processing', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.operation, 'update');
+      assert.deepEqual(state.payload, { status: 'processing' });
+      assert.equal(state.filters.id, 'gc-1');
+      return { data: null, error: null };
+    }
+  });
+
+  await markProcessing(db, 'gc-1');
+});
+
+test('markDone updates status, cost_usd, and metadata', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.status, 'done');
+      assert.equal(state.payload.cost_usd, 0.003);
+      assert.deepEqual(state.payload.metadata, { tier: 'cheap', model: 'anthropic/claude-haiku-4-5' });
+      return { data: null, error: null };
+    }
+  });
+
+  await markDone(db, 'gc-1', { costUsd: 0.003, metadata: { tier: 'cheap', model: 'anthropic/claude-haiku-4-5' } });
+});
+
+test('markError updates status to error with the failure message in metadata', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.status, 'error');
+      assert.deepEqual(state.payload.metadata, { error: 'LLM HTTP 500' });
+      return { data: null, error: null };
+    }
+  });
+
+  await markError(db, 'gc-1', 'LLM HTTP 500');
+});
