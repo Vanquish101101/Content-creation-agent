@@ -108,7 +108,7 @@ export function createGenerationOrchestrator({
               telegramId: job.telegram_id,
               messageType: 'moderation_request',
               generatedContentId: id,
-              payload: { wizard: job.wizard, r2Url: result.r2Url ?? null, downloadUrl }
+              payload: { wizard: job.wizard, r2Url: result.r2Url ?? null, downloadUrl, generatedContentId: id }
             }).catch((err) => console.error('[generate] moderation_request notify failed:', err.message));
           }
           await markPendingModeration(db, id);
