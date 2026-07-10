@@ -3,6 +3,7 @@
 // статуса в generated_content (pending → processing → done|error). Это точка
 // расширения onJob, подключаемая в src/index.js вместо стаб-заглушки Слайса 1.
 import { routeByContentType } from '../router/route.js';
+import { normalizeWizardContentType } from '../router/normalizeWizardContentType.js';
 import { createPendingRecord, markProcessing, markDone, markError, markPublishResult, markPendingModeration } from './persistence.js';
 import { markWizardProcessed } from '../dedup/processedWizardRequests.js';
 import { getTotalUsageBytes, getUsageByUser } from '../quota/storageUsage.js';
@@ -60,7 +61,10 @@ export function createGenerationOrchestrator({
       // исключение (см. enrichWithTrends.js) — здесь просто null, если enrich
       // не передан вообще (например, MCP Агента 3 не настроен).
       const trendContext = enrich ? await enrich(job.wizard) : null;
-      const generate = route(job.wizard.content_type, routeDeps);
+      // wizard.content_type — сырое значение кнопки Агента 1 (post/photo/reels/...),
+      // не совпадает 1-в-1 с именами роутера (text/image/video/audio), см.
+      // normalizeWizardContentType.js.
+      const generate = route(normalizeWizardContentType(job.wizard.content_type), routeDeps);
       const result = await generate({ ...job.wizard, telegram_id: job.telegram_id, trendContext });
       await markDone(db, id, {
         costUsd: result.costUsd,
