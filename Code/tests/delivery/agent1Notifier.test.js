@@ -42,14 +42,14 @@ test('notifyAgent1 allows a null generatedContentId (e.g. quota_warning has no s
   await notifyAgent1({ telegramId: 123, messageType: 'quota_warning', payload: { usedGb: 9.6 } });
 });
 
-test('notifyAgent1 publishes a delivery_ready event to notifications:agent1_from_agent4', async () => {
+test('notifyAgent1 publishes a delivery_ready event to notifications:agent1_from_agent4, including the payload itself', async () => {
   const db = makeFakeDb({
-    agent1_delivery_queue: () => ({ data: null, error: null })
+    agent1_delivery_queue: () => ({ data: { id: 'row-1' }, error: null })
   });
   const redis = makeFakeRedis();
   const notifyAgent1 = createAgent1Notifier({ db, _redis: redis });
 
-  await notifyAgent1({ telegramId: 123, messageType: 'content_ready', payload: {} });
+  await notifyAgent1({ telegramId: 123, messageType: 'content_ready', payload: { network: 'instagram', contentType: 'text' } });
 
   assert.equal(redis.published.length, 1);
   assert.equal(redis.published[0].channel, 'notifications:agent1_from_agent4');
@@ -58,6 +58,25 @@ test('notifyAgent1 publishes a delivery_ready event to notifications:agent1_from
   assert.equal(event.telegram_id, 123);
   assert.equal(event.message_type, 'content_ready');
   assert.equal(typeof event.timestamp, 'string');
+  // Найдено живой проверкой 2026-07-10: без payload здесь быстрый (Redis) путь
+  // доставки у Агента 1 всегда получал пустое сообщение — только медленный
+  // (5-минутный Supabase-поллинг) путь имел реальные данные.
+  assert.deepEqual(event.payload, { network: 'instagram', contentType: 'text' });
+  assert.equal(event.queue_id, 'row-1');
+});
+
+test('notifyAgent1 still includes payload in the Redis event even if the Supabase insert failed on every retry', async () => {
+  const db = makeFakeDb({
+    agent1_delivery_queue: () => ({ data: null, error: { message: 'still down' } })
+  });
+  const redis = makeFakeRedis();
+  const notifyAgent1 = createAgent1Notifier({ db, _redis: redis, _retryDelaysMs: [0, 0] });
+
+  await notifyAgent1({ telegramId: 123, messageType: 'content_ready', payload: { text: 'x' } });
+
+  const event = JSON.parse(redis.published[0].message);
+  assert.deepEqual(event.payload, { text: 'x' });
+  assert.equal(event.queue_id, null);
 });
 
 test('notifyAgent1 retries the Supabase insert on failure and does not throw if a later attempt succeeds', async () => {

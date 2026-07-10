@@ -304,6 +304,27 @@ test('mode publish + moderation_mode true sends a moderation_request via notifyA
   assert.equal(updates.at(-1).status, 'pending_moderation');
 });
 
+test('moderation_request includes a presigned downloadUrl, not just the raw R2 key, when a file was generated', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.2, tier: 'cheap', model: 'm', r2Url: 'gc-1/preview.png' });
+  const notifyCalls = [];
+  const r2 = { getSignedDownloadUrl: async (key) => `https://signed.example/${key}` };
+  const job = { ...JOB, mode: 'publish', moderation_mode: true };
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    r2,
+    notifyAgent1: async (msg) => notifyCalls.push(msg),
+    _checkQuotaAndWarn: async () => null
+  });
+
+  await orchestrator.generateContent(job);
+
+  const moderationCall = notifyCalls.find((m) => m.messageType === 'moderation_request');
+  assert.equal(moderationCall.payload.r2Url, 'gc-1/preview.png');
+  assert.equal(moderationCall.payload.downloadUrl, 'https://signed.example/gc-1/preview.png');
+});
+
 test('sends a content_ready report via notifyAgent1 for a successful mode:content text generation', async () => {
   const db = makeDb([]);
   const fakeRoute = () => async () => ({ text: 'Готовый пост', costUsd: 0.002, tier: 'cheap', model: 'm' });

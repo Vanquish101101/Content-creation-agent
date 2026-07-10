@@ -5,7 +5,7 @@
 import { routeByContentType } from '../router/route.js';
 import { createPendingRecord, markProcessing, markDone, markError, markPublishResult, markPendingModeration } from './persistence.js';
 import { getTotalUsageBytes, getUsageByUser } from '../quota/storageUsage.js';
-import { isOverThreshold } from '../quota/checkQuota.js';
+import { isOverThreshold, DEFAULT_LIMIT_BYTES } from '../quota/checkQuota.js';
 import { selectWarningCandidate } from '../quota/selectWarningCandidate.js';
 import { buildContentReport } from '../delivery/buildContentReport.js';
 
@@ -14,7 +14,7 @@ import { buildContentReport } from '../delivery/buildContentReport.js';
 // 2026-07-10), но предупреждается конкретный пользователь, занимающий больше
 // всего места. Возвращает null, если предупреждать не о чем (порог не
 // достигнут, либо достигнут, но некого предупреждать).
-async function defaultCheckQuotaAndWarn(db) {
+export async function checkQuotaAndWarn(db) {
   const total = await getTotalUsageBytes(db);
   if (!isOverThreshold(total)) {
     return null;
@@ -27,7 +27,10 @@ async function defaultCheckQuotaAndWarn(db) {
   return {
     telegramId: candidate.telegramId,
     messageType: 'quota_warning',
-    payload: { totalUsageBytes: total, userUsageBytes: candidate.totalBytes, items: candidate.items }
+    // limitBytes добавлен явно (найдено живой проверкой 2026-07-10) — раньше
+    // порог был только локальной константой, Агент 1 не мог его показать
+    // пользователю без догадок/жёсткого хардкода на своей стороне.
+    payload: { totalUsageBytes: total, userUsageBytes: candidate.totalBytes, limitBytes: DEFAULT_LIMIT_BYTES, items: candidate.items }
   };
 }
 
@@ -39,7 +42,7 @@ export function createGenerationOrchestrator({
   notifyAgent1,
   publish,
   r2,
-  _checkQuotaAndWarn = defaultCheckQuotaAndWarn
+  _checkQuotaAndWarn = checkQuotaAndWarn
 } = {}) {
   async function generateContent(job) {
     const id = await createPendingRecord(db, {
@@ -93,11 +96,15 @@ export function createGenerationOrchestrator({
           // Агента 1 (см. «Доработки для Агентов 1 и 3», пункт E) — та же
           // ситуация, что и с quota_warning выше.
           if (notifyAgent1) {
+            // downloadUrl — presigned-ссылка, а не голый ключ R2 (найдено живой
+            // проверкой 2026-07-10: пользователь физически не мог открыть
+            // r2Url как есть, бакет не публичный).
+            const downloadUrl = result.r2Url && r2 ? await r2.getSignedDownloadUrl(result.r2Url).catch(() => null) : null;
             await notifyAgent1({
               telegramId: job.telegram_id,
               messageType: 'moderation_request',
               generatedContentId: id,
-              payload: { wizard: job.wizard, r2Url: result.r2Url ?? null }
+              payload: { wizard: job.wizard, r2Url: result.r2Url ?? null, downloadUrl }
             }).catch((err) => console.error('[generate] moderation_request notify failed:', err.message));
           }
           await markPendingModeration(db, id);
