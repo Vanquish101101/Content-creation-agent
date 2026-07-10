@@ -1,6 +1,6 @@
 # Content creation agent/Code/Dockerfile
 # Content Creation Agent
-# ver. v0.1.0
+# ver. v0.13.0
 
 FROM node:22-alpine
 

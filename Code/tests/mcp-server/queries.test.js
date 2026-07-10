@@ -24,6 +24,14 @@ test('getContentStatus returns null when the job does not exist', async () => {
   assert.equal(await getContentStatus(db, 'gc-missing'), null);
 });
 
+test('getContentStatus returns null for a malformed (non-UUID) job_id — Postgres 22P02, found via live MCP call', async () => {
+  const db = makeFakeDb({
+    generated_content: () => ({ data: null, error: { code: '22P02', message: 'invalid input syntax for type uuid: "does-not-exist"' } })
+  });
+
+  assert.equal(await getContentStatus(db, 'does-not-exist'), null);
+});
+
 test('getContentStatus throws on an unexpected database error', async () => {
   const db = makeFakeDb({ generated_content: () => ({ data: null, error: { message: 'connection reset' } }) });
 
@@ -59,4 +67,12 @@ test('getContentResult returns null when the job does not exist', async () => {
   });
 
   assert.equal(await getContentResult(db, 'gc-missing'), null);
+});
+
+test('getContentResult returns null for a malformed (non-UUID) job_id — Postgres 22P02, found via live MCP call', async () => {
+  const db = makeFakeDb({
+    generated_content: () => ({ data: null, error: { code: '22P02', message: 'invalid input syntax for type uuid: "does-not-exist"' } })
+  });
+
+  assert.equal(await getContentResult(db, 'does-not-exist'), null);
 });
