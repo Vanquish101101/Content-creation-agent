@@ -31,6 +31,19 @@ test('computeWizardHash returns a different hash when description changes', () =
   assert.notEqual(computeWizardHash(base), computeWizardHash(changed));
 });
 
+test('computeWizardHash returns a different hash when use_trends changes', () => {
+  const base = {
+    network: 'instagram',
+    content_type: 'post',
+    format: '916',
+    style: 'expert',
+    description: 'Пост про маркетинг',
+    use_trends: false
+  };
+
+  assert.notEqual(computeWizardHash(base), computeWizardHash({ ...base, use_trends: true }));
+});
+
 test('computeWizardHash is independent of key order', () => {
   const a = computeWizardHash({
     network: 'tiktok',
