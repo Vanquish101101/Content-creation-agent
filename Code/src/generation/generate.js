@@ -4,6 +4,7 @@
 // расширения onJob, подключаемая в src/index.js вместо стаб-заглушки Слайса 1.
 import { routeByContentType } from '../router/route.js';
 import { createPendingRecord, markProcessing, markDone, markError, markPublishResult, markPendingModeration } from './persistence.js';
+import { markWizardProcessed } from '../dedup/processedWizardRequests.js';
 import { getTotalUsageBytes, getUsageByUser } from '../quota/storageUsage.js';
 import { isOverThreshold, DEFAULT_LIMIT_BYTES } from '../quota/checkQuota.js';
 import { selectWarningCandidate } from '../quota/selectWarningCandidate.js';
@@ -148,6 +149,14 @@ export function createGenerationOrchestrator({
           console.error('[generate] content_ready notify failed:', reportErr.message);
         }
       }
+
+      // Дедупликация — помечаем wizard-запрос обработанным ТОЛЬКО здесь, на
+      // реальном успехе (см. intake.js). Найдено живой проверкой 2026-07-10:
+      // без этого вызова 30-секундный поллинг Агента 1 заново находил ту же
+      // задачу на каждом тике и генерировал/слал уведомления заново —
+      // реально ушло 3 одинаковых moderation_request в Telegram подряд,
+      // прежде чем было остановлено вручную.
+      await markWizardProcessed(db, job.telegram_id, job.wizard_hash);
 
       return { id, status, ...result, ...(publishReport ? { publishReport } : {}) };
     } catch (err) {

@@ -11,13 +11,21 @@ const JOB = {
   moderation_mode: false
 };
 
-function makeDb(recordedUpdates) {
+function makeDb(recordedUpdates, processedWizardInserts = []) {
   return makeFakeDb({
     generated_content: (state) => {
       if (state.operation === 'insert') {
         return { data: { id: 'gc-1' }, error: null };
       }
       recordedUpdates.push(state.payload);
+      return { data: null, error: null };
+    },
+    // Найдено живой проверкой 2026-07-10: без обработчика здесь любой тест,
+    // доходящий до markWizardProcessed, падал бы с "no handler registered" —
+    // сам баг был в том, что markWizardProcessed вообще нигде не вызывался
+    // (см. новые тесты ниже), не в этом фейке.
+    processed_wizard_requests: (state) => {
+      processedWizardInserts.push(state.payload);
       return { data: null, error: null };
     }
   });
@@ -419,6 +427,51 @@ test('a content_ready notify failure does not fail the generation itself', async
   const result = await orchestrator.generateContent(JOB);
 
   assert.equal(result.status, 'done');
+});
+
+// Найдено живой проверкой 2026-07-10 (полная цепочка Агент1→2→3→4 через реальный
+// Telegram): markWizardProcessed был определён, но НИГДЕ не вызывался.
+// content_creation_agent.processed_wizard_requests оставался вечно пустым для
+// любого wizard-запроса, поэтому каждый 30-секундный тик поллинга Агента 1
+// (intelligence_agent.agent4_handoff_queue, который Агент 4 намеренно не
+// помечает status на чужой стороне) заново находил ту же самую задачу и
+// генерировал/публиковал/слал moderation_request заново — реально ушло 3
+// одинаковых сообщения в Telegram за полторы минуты, прежде чем было замечено
+// и остановлено вручную.
+test('marks the wizard request as processed after a successful generation (dedup fix)', async () => {
+  const processedInserts = [];
+  const db = makeDb([], processedInserts);
+  const fakeRoute = () => async () => ({ text: 'x', costUsd: 0.001, tier: 'cheap', model: 'm' });
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, _checkQuotaAndWarn: async () => null });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(processedInserts.length, 1);
+  assert.equal(processedInserts[0].telegram_id, JOB.telegram_id);
+  assert.equal(processedInserts[0].wizard_hash, JOB.wizard_hash);
+});
+
+test('marks the wizard request as processed even when paused for moderation (still a real, non-erroring outcome)', async () => {
+  const processedInserts = [];
+  const db = makeDb([], processedInserts);
+  const fakeRoute = () => async () => ({ costUsd: 0, tier: 'cheap', model: 'm' });
+  const job = { ...JOB, mode: 'publish', moderation_mode: true };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, _checkQuotaAndWarn: async () => null });
+
+  await orchestrator.generateContent(job);
+
+  assert.equal(processedInserts.length, 1);
+});
+
+test('does NOT mark the wizard request as processed when generation throws — allows retry on next poll', async () => {
+  const processedInserts = [];
+  const db = makeDb([], processedInserts);
+  const fakeRoute = () => async () => { throw new Error('LLM HTTP 500'); };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, _checkQuotaAndWarn: async () => null });
+
+  await assert.rejects(() => orchestrator.generateContent(JOB));
+
+  assert.equal(processedInserts.length, 0);
 });
 
 test('marks the record as error and rethrows when generation fails', async () => {
