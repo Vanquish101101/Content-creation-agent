@@ -7,6 +7,7 @@ import { createPendingRecord, markProcessing, markDone, markError, markPublishRe
 import { getTotalUsageBytes, getUsageByUser } from '../quota/storageUsage.js';
 import { isOverThreshold } from '../quota/checkQuota.js';
 import { selectWarningCandidate } from '../quota/selectWarningCandidate.js';
+import { buildContentReport } from '../delivery/buildContentReport.js';
 
 // Проверка квоты хранилища (см. src/quota/*) — только на весь bucket (R2 free
 // tier не знает о "пользователях" приложения, см. обсуждение с пользователем
@@ -37,6 +38,7 @@ export function createGenerationOrchestrator({
   enrich,
   notifyAgent1,
   publish,
+  r2,
   _checkQuotaAndWarn = defaultCheckQuotaAndWarn
 } = {}) {
   async function generateContent(job) {
@@ -112,6 +114,27 @@ export function createGenerationOrchestrator({
           publishReport = [{ network: job.wizard.network, accountId: null, status: 'error', reason: 'PostMyPost not configured' }];
           await markPublishResult(db, id, publishReport);
           status = 'publish_failed';
+        }
+      }
+
+      // Слайс 9 — короткий отчёт пользователю через Агента 1. Не отправляется
+      // только когда генерация поставлена на паузу ради модерации — там уже
+      // ушёл свой moderation_request с превью, дублировать отчётом рано:
+      // самого результата (публикации) ещё нет.
+      if (status !== 'pending_moderation' && notifyAgent1) {
+        try {
+          const report = buildContentReport({ wizard: job.wizard, result, publishReport });
+          if (result.r2Url && r2) {
+            report.downloadUrl = await r2.getSignedDownloadUrl(result.r2Url);
+          }
+          await notifyAgent1({
+            telegramId: job.telegram_id,
+            messageType: 'content_ready',
+            generatedContentId: id,
+            payload: report
+          });
+        } catch (reportErr) {
+          console.error('[generate] content_ready notify failed:', reportErr.message);
         }
       }
 

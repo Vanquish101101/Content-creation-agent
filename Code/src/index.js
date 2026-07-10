@@ -96,6 +96,7 @@ function requireEnv(name) {
     enrich,
     notifyAgent1,
     publish,
+    r2,
     routeDeps: {
       text: {
         apiKey: requireEnv('OPENROUTER_API_KEY'),

@@ -152,12 +152,12 @@ test('warns via notifyAgent1 when a file was uploaded and storage usage is over 
 
   await orchestrator.generateContent(JOB);
 
-  assert.equal(notifyCalls.length, 1);
-  assert.equal(notifyCalls[0].messageType, 'quota_warning');
-  assert.equal(notifyCalls[0].telegramId, 999);
+  const quotaCalls = notifyCalls.filter((m) => m.messageType === 'quota_warning');
+  assert.equal(quotaCalls.length, 1);
+  assert.equal(quotaCalls[0].telegramId, 999);
 });
 
-test('does not call notifyAgent1 when the quota check finds nothing to warn about', async () => {
+test('does not call notifyAgent1 with quota_warning when the quota check finds nothing to warn about', async () => {
   const db = makeDb([]);
   const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'm', r2Url: 'gc-1/video.mp4', sizeBytes: 1000 });
   const notifyCalls = [];
@@ -170,7 +170,7 @@ test('does not call notifyAgent1 when the quota check finds nothing to warn abou
 
   await orchestrator.generateContent(JOB);
 
-  assert.equal(notifyCalls.length, 0);
+  assert.equal(notifyCalls.filter((m) => m.messageType === 'quota_warning').length, 0);
 });
 
 test('does not run the quota check for text generation (no r2Url)', async () => {
@@ -204,7 +204,7 @@ test('a quota-check failure does not fail the generation itself', async () => {
   assert.equal(result.status, 'done');
 });
 
-test('mode content (not publish) never calls publish or the moderation notify', async () => {
+test('mode content (not publish) never calls publish() or sends a moderation_request (but does send content_ready, see Слайс 9)', async () => {
   const db = makeDb([]);
   const fakeRoute = () => async () => ({ text: 'x', costUsd: 0, tier: 'cheap', model: 'm' });
   let publishCalled = false;
@@ -220,7 +220,8 @@ test('mode content (not publish) never calls publish or the moderation notify', 
   const result = await orchestrator.generateContent(JOB); // JOB.mode === 'content'
 
   assert.equal(publishCalled, false);
-  assert.equal(notifyCalls.length, 0);
+  assert.equal(notifyCalls.filter((m) => m.messageType === 'moderation_request').length, 0);
+  assert.deepEqual(notifyCalls.map((m) => m.messageType), ['content_ready']);
   assert.equal(result.status, 'done');
 });
 
@@ -301,6 +302,97 @@ test('mode publish + moderation_mode true sends a moderation_request via notifyA
   assert.equal(notifyCalls[0].telegramId, job.telegram_id);
   assert.equal(result.status, 'pending_moderation');
   assert.equal(updates.at(-1).status, 'pending_moderation');
+});
+
+test('sends a content_ready report via notifyAgent1 for a successful mode:content text generation', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ text: 'Готовый пост', costUsd: 0.002, tier: 'cheap', model: 'm' });
+  const notifyCalls = [];
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    notifyAgent1: async (msg) => notifyCalls.push(msg),
+    _checkQuotaAndWarn: async () => null
+  });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(notifyCalls.length, 1);
+  assert.equal(notifyCalls[0].messageType, 'content_ready');
+  assert.equal(notifyCalls[0].telegramId, JOB.telegram_id);
+  assert.equal(notifyCalls[0].payload.text, 'Готовый пост');
+});
+
+test('adds a presigned downloadUrl to the content_ready report when a file was uploaded', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'm', r2Url: 'gc-1/video.mp4', sizeBytes: 1000 });
+  const notifyCalls = [];
+  const r2 = { getSignedDownloadUrl: async (key) => `https://signed.example/${key}` };
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    r2,
+    notifyAgent1: async (msg) => notifyCalls.push(msg),
+    _checkQuotaAndWarn: async () => null
+  });
+
+  await orchestrator.generateContent(JOB);
+
+  const contentReady = notifyCalls.find((m) => m.messageType === 'content_ready');
+  assert.equal(contentReady.payload.downloadUrl, 'https://signed.example/gc-1/video.mp4');
+});
+
+test('does not send content_ready when the job was paused for moderation', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'm' });
+  const notifyCalls = [];
+  const job = { ...JOB, mode: 'publish', moderation_mode: true };
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    notifyAgent1: async (msg) => notifyCalls.push(msg),
+    _checkQuotaAndWarn: async () => null
+  });
+
+  await orchestrator.generateContent(job);
+
+  assert.equal(notifyCalls.filter((m) => m.messageType === 'content_ready').length, 0);
+  assert.equal(notifyCalls.filter((m) => m.messageType === 'moderation_request').length, 1);
+});
+
+test('includes publishReport in the content_ready report for a published job', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'm' });
+  const notifyCalls = [];
+  const publish = async () => [{ network: 'instagram', accountId: 1, status: 'success' }];
+  const job = { ...JOB, mode: 'publish', moderation_mode: false };
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    publish,
+    notifyAgent1: async (msg) => notifyCalls.push(msg),
+    _checkQuotaAndWarn: async () => null
+  });
+
+  await orchestrator.generateContent(job);
+
+  const contentReady = notifyCalls.find((m) => m.messageType === 'content_ready');
+  assert.deepEqual(contentReady.payload.publishReport, [{ network: 'instagram', accountId: 1, status: 'success' }]);
+});
+
+test('a content_ready notify failure does not fail the generation itself', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ text: 'x', costUsd: 0.002, tier: 'cheap', model: 'm' });
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    notifyAgent1: async () => { throw new Error('redis down'); },
+    _checkQuotaAndWarn: async () => null
+  });
+
+  const result = await orchestrator.generateContent(JOB);
+
+  assert.equal(result.status, 'done');
 });
 
 test('marks the record as error and rethrows when generation fails', async () => {
