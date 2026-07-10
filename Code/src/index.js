@@ -12,6 +12,9 @@ import { createAgent1Notifier } from './delivery/agent1Notifier.js';
 import { createPostMyPostClient } from './publish/postMyPostClient.js';
 import { createContentPublisher } from './publish/publishContent.js';
 import { createMcpHttpServer } from './mcp-server/http.js';
+import { subscribeToConsent } from './consent/subscribe.js';
+import { createConsentPoller } from './consent/poller.js';
+import { createDecisionHandler } from './consent/handleDecision.js';
 
 const DEFAULT_MCP_HTTP_PORT = 7303;
 
@@ -121,6 +124,35 @@ function requireEnv(name) {
       }
     }
   });
+
+  // Канал согласия пользователя (пункт G, «Доработки для Агентов 1 и 3») —
+  // приёмная сторона квоты/модерации: Агент 1 присылает решение
+  // (одобрено/отклонено) по каналу notifications:agent4_from_agent1 +
+  // intelligence_agent.agent4_consent_queue (симметрично уже существующему
+  // приёму wizard_ready/digest_ready выше). Готово к работе, как только
+  // появится отправляющая сторона у Агента 1 (сейчас не реализована).
+  const handleDecision = createDecisionHandler({ db, r2, publish, notifyAgent1 });
+
+  await subscribeToConsent({
+    redisUrl: requireEnv('REDIS_URL'),
+    onDecision: (event) =>
+      handleDecision({
+        generatedContentId: event.generatedContentId,
+        decisionType: event.decisionType,
+        decision: event.decision
+      }).catch((err) => console.error('[index] handleDecision (redis) failed:', err.message))
+  });
+
+  const consentPoller = createConsentPoller({
+    db,
+    onRow: (row) =>
+      handleDecision({
+        generatedContentId: row.generated_content_id,
+        decisionType: row.decision_type,
+        decision: row.decision
+      }).catch((err) => console.error('[index] handleDecision (poll) failed:', err.message))
+  });
+  consentPoller.start(POLL_INTERVAL_MS);
 
   const intake = createIntakeHandler({
     db,

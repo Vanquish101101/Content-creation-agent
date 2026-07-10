@@ -64,6 +64,15 @@ export async function markPendingModeration(db, id) {
   }
 }
 
+// Пункт G — пользователь отклонил публикацию через канал согласия
+// (message_type 'moderation_request', decision: 'rejected').
+export async function markPublishRejected(db, id) {
+  const { error } = await db.from('generated_content').update({ status: 'publish_rejected' }).eq('id', id);
+  if (error) {
+    throw new Error(`markPublishRejected: ${error.message}`);
+  }
+}
+
 export async function markError(db, id, message) {
   const { error } = await db
     .from('generated_content')

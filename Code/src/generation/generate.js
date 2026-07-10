@@ -63,7 +63,11 @@ export function createGenerationOrchestrator({
       const result = await generate({ ...job.wizard, telegram_id: job.telegram_id, trendContext });
       await markDone(db, id, {
         costUsd: result.costUsd,
-        metadata: { tier: result.tier, model: result.model, text: result.text },
+        // wizard сохраняется в metadata (generated_content хранит только
+        // необратимый wizard_hash) — нужен, чтобы восстановить исходный
+        // запрос при публикации после подтверждения модерации, см.
+        // consent/handleDecision.js.
+        metadata: { tier: result.tier, model: result.model, text: result.text, wizard: job.wizard },
         r2Url: result.r2Url ?? null,
         sizeBytes: result.sizeBytes ?? null
       });

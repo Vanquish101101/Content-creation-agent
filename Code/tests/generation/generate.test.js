@@ -37,6 +37,11 @@ test('runs the full pipeline: pending -> processing -> done on success', async (
   assert.equal(updates[1].status, 'done');
   assert.equal(updates[1].cost_usd, 0.002);
   assert.equal(updates[1].metadata.text, 'Готовый пост');
+  // Найдено при проектировании канала согласия (пункт G): без wizard в
+  // metadata "публикация после подтверждения модерации" не смогла бы
+  // восстановить исходный запрос (generated_content хранит только
+  // wizard_hash, необратимый).
+  assert.deepEqual(updates[1].metadata.wizard, JOB.wizard);
 });
 
 test('passes job.wizard.content_type and routeDeps to route()', async () => {

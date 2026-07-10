@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeFakeDb } from '../helpers/fakeSupabase.js';
-import { createPendingRecord, markProcessing, markDone, markError, markPublishResult, markPendingModeration } from '../../src/generation/persistence.js';
+import { createPendingRecord, markProcessing, markDone, markError, markPublishResult, markPendingModeration, markPublishRejected } from '../../src/generation/persistence.js';
 
 test('createPendingRecord inserts a pending row and returns its id', async () => {
   const db = makeFakeDb({
@@ -141,6 +141,17 @@ test('markPendingModeration sets status to pending_moderation', async () => {
   });
 
   await markPendingModeration(db, 'gc-1');
+});
+
+test('markPublishRejected sets status to publish_rejected', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.status, 'publish_rejected');
+      return { data: null, error: null };
+    }
+  });
+
+  await markPublishRejected(db, 'gc-1');
 });
 
 test('markError updates status to error with the failure message in metadata', async () => {
