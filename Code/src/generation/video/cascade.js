@@ -121,15 +121,15 @@ export function createVideoCascade({
     const buffer = Buffer.from(await response.arrayBuffer());
     const key = `${telegramId ?? 'unknown'}/${Date.now()}-video.mp4`;
     const { key: r2Key } = await r2.uploadFile({ key, body: buffer, contentType: 'video/mp4' });
-    return r2Key;
+    return { r2Key, sizeBytes: buffer.length };
   }
 
   async function generateWithSettings(settings, wizard) {
     const taskId = await startTask(settings, wizard);
     const fileId = await pollTask(taskId);
     const downloadUrl = await retrieveDownloadUrl(fileId);
-    const r2Url = await downloadAndUpload(downloadUrl, wizard.telegram_id);
-    return { r2Url, costUsd: APPROX_COST_USD[settings.model] ?? 0 };
+    const { r2Key, sizeBytes } = await downloadAndUpload(downloadUrl, wizard.telegram_id);
+    return { r2Url: r2Key, sizeBytes, costUsd: APPROX_COST_USD[settings.model] ?? 0 };
   }
 
   return async function generateVideo(wizard) {

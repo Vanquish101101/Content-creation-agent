@@ -81,6 +81,28 @@ test('markDone defaults r2_url to null when not provided (text slice)', async ()
   await markDone(db, 'gc-1', { costUsd: 0.003, metadata: {} });
 });
 
+test('markDone persists sizeBytes as size_bytes when provided (image/video/audio slices)', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.size_bytes, 123456);
+      return { data: null, error: null };
+    }
+  });
+
+  await markDone(db, 'gc-1', { costUsd: 0.5, metadata: {}, r2Url: 'gc-1/video.mp4', sizeBytes: 123456 });
+});
+
+test('markDone defaults size_bytes to null when not provided (text slice)', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.size_bytes, null);
+      return { data: null, error: null };
+    }
+  });
+
+  await markDone(db, 'gc-1', { costUsd: 0.003, metadata: {} });
+});
+
 test('markError updates status to error with the failure message in metadata', async () => {
   const db = makeFakeDb({
     generated_content: (state) => {

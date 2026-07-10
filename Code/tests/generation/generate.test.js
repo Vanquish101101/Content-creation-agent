@@ -123,6 +123,87 @@ test('passes result.r2Url through to markDone when the cascade uploaded a file (
   assert.equal(updates[1].r2_url, 'gc-1/video.mp4');
 });
 
+test('passes result.sizeBytes through to markDone when the cascade uploaded a file', async () => {
+  const updates = [];
+  const db = makeDb(updates);
+  const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'runway/gen4_turbo', r2Url: 'gc-1/video.mp4', sizeBytes: 654321 });
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(updates[1].size_bytes, 654321);
+});
+
+test('warns via notifyAgent1 when a file was uploaded and storage usage is over threshold', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'm', r2Url: 'gc-1/video.mp4', sizeBytes: 1000 });
+  const notifyCalls = [];
+  const checkQuota = async () => ({
+    telegramId: 999,
+    messageType: 'quota_warning',
+    payload: { totalUsageBytes: 9999999999, userUsageBytes: 5000, items: [] }
+  });
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    notifyAgent1: async (msg) => notifyCalls.push(msg),
+    _checkQuotaAndWarn: checkQuota
+  });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(notifyCalls.length, 1);
+  assert.equal(notifyCalls[0].messageType, 'quota_warning');
+  assert.equal(notifyCalls[0].telegramId, 999);
+});
+
+test('does not call notifyAgent1 when the quota check finds nothing to warn about', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'm', r2Url: 'gc-1/video.mp4', sizeBytes: 1000 });
+  const notifyCalls = [];
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    notifyAgent1: async (msg) => notifyCalls.push(msg),
+    _checkQuotaAndWarn: async () => null
+  });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(notifyCalls.length, 0);
+});
+
+test('does not run the quota check for text generation (no r2Url)', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.002, tier: 'cheap', model: 'm', text: 'x' });
+  let quotaCheckCalled = false;
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    notifyAgent1: async () => {},
+    _checkQuotaAndWarn: async () => { quotaCheckCalled = true; return null; }
+  });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(quotaCheckCalled, false);
+});
+
+test('a quota-check failure does not fail the generation itself', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'm', r2Url: 'gc-1/video.mp4', sizeBytes: 1000 });
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    notifyAgent1: async () => {},
+    _checkQuotaAndWarn: async () => { throw new Error('quota query failed'); }
+  });
+
+  const result = await orchestrator.generateContent(JOB);
+
+  assert.equal(result.status, 'done');
+});
+
 test('marks the record as error and rethrows when generation fails', async () => {
   const updates = [];
   const db = makeDb(updates);

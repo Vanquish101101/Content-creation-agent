@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { createR2Client } from '../../src/storage/r2Client.js';
 
 function fakeS3() {
@@ -101,4 +101,22 @@ test('getSignedDownloadUrl accepts a custom expiry', async () => {
   await client.getSignedDownloadUrl('gc-4/audio.mp3', 600);
 
   assert.equal(signCalls[0].options.expiresIn, 600);
+});
+
+test('deleteFile sends a DeleteObjectCommand for the given bucket/key', async () => {
+  const s3 = fakeS3();
+  const client = createR2Client({
+    accountId: 'acc-1',
+    accessKeyId: 'key-1',
+    secretAccessKey: 'secret-1',
+    bucket: 'content-creation-agent',
+    _s3: s3
+  });
+
+  await client.deleteFile('gc-5/old-video.mp4');
+
+  assert.equal(s3.calls.length, 1);
+  assert.ok(s3.calls[0] instanceof DeleteObjectCommand);
+  assert.equal(s3.calls[0].input.Bucket, 'content-creation-agent');
+  assert.equal(s3.calls[0].input.Key, 'gc-5/old-video.mp4');
 });

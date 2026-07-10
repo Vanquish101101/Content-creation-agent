@@ -26,9 +26,10 @@ function requireEnv(name) {
     serviceKey: requireEnv('SUPABASE_SERVICE_KEY')
   });
 
-  // Обратный канал Агент 4 → Агент 1 (см. src/delivery/agent1Notifier.js) — собран здесь,
-  // но пока не вызывается: первый потребитель появится в Слайсе 8 (запрос подтверждения
-  // модерации) и Слайсе 9 (отчёт о готовом контенте).
+  // Обратный канал Агент 4 → Агент 1 (см. src/delivery/agent1Notifier.js) — первый
+  // реальный потребитель: предупреждение о квоте R2 (message_type quota_warning,
+  // src/quota/*), передан в orchestrator ниже. Слайс 8 (модерация) и Слайс 9 (отчёт)
+  // добавят свои message_type через тот же notifyAgent1.
   const notifyAgent1 = createAgent1Notifier({ db, redisUrl: requireEnv('REDIS_URL') });
 
   // Хранилище — опционально: text (Слайс 2) не сохраняет файлы и не нуждается в нём.
@@ -77,6 +78,7 @@ function requireEnv(name) {
   const orchestrator = createGenerationOrchestrator({
     db,
     enrich,
+    notifyAgent1,
     routeDeps: {
       text: {
         apiKey: requireEnv('OPENROUTER_API_KEY'),

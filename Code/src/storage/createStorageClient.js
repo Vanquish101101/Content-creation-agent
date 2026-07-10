@@ -1,9 +1,10 @@
 // src/storage/createStorageClient.js
 // Единственная точка выбора backend'а хранилища сгенерированных файлов.
 // Контракт, которому должен соответствовать любой backend (нынешний r2Client.js
-// и любой будущий): `uploadFile({ key, body, contentType }) => Promise<{ key }>`
-// и `getSignedDownloadUrl(key, expiresInSeconds) => Promise<string>` — см.
-// сигнатуры в r2Client.js. Каскады генерации (image/video/audio) вызывают только
+// и любой будущий): `uploadFile({ key, body, contentType }) => Promise<{ key }>`,
+// `getSignedDownloadUrl(key, expiresInSeconds) => Promise<string>` и
+// `deleteFile(key) => Promise<void>` (нужен для квоты хранилища, см.
+// src/quota/deleteContent.js) — см. точные сигнатуры в r2Client.js. Каскады генерации (image/video/audio) вызывают только
 // эти два метода через DI (`deps.image.r2` и т.д.) и ничего не знают о конкретном
 // backend'е — смена backend'а не требует правок в каскадах, только новый файл с
 // тем же контрактом + добавление case здесь.

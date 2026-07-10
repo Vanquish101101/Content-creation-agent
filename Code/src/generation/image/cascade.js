@@ -106,14 +106,14 @@ export function createImageCascade({
     const buffer = Buffer.from(await response.arrayBuffer());
     const key = `${telegramId ?? 'unknown'}/${Date.now()}-image.png`;
     const { key: r2Key } = await r2.uploadFile({ key, body: buffer, contentType: 'image/png' });
-    return r2Key;
+    return { r2Key, sizeBytes: buffer.length };
   }
 
   async function generateWithModel(model, wizard) {
     const taskId = await startTask(model, wizard);
     const ephemeralUrl = await pollTask(taskId);
-    const r2Url = await downloadAndUpload(ephemeralUrl, wizard.telegram_id);
-    return { r2Url, costUsd: APPROX_COST_USD[model] ?? 0 };
+    const { r2Key, sizeBytes } = await downloadAndUpload(ephemeralUrl, wizard.telegram_id);
+    return { r2Url: r2Key, sizeBytes, costUsd: APPROX_COST_USD[model] ?? 0 };
   }
 
   return async function generateImage(wizard) {

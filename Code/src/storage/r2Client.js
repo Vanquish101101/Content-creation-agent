@@ -3,7 +3,7 @@
 // Supabase Storage: egress у R2 бесплатен всегда, что критично для контента,
 // который многократно просматривают/скачивают/публикуют. См. «04. Брейншторм»,
 // §6, и «07. Архитектура (Бекенд).md», §6.
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl as defaultGetSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const DEFAULT_EXPIRES_IN_SECONDS = 3600;
@@ -48,6 +48,13 @@ export function createR2Client({
     async getSignedDownloadUrl(key, expiresInSeconds = DEFAULT_EXPIRES_IN_SECONDS) {
       const command = new GetObjectCommand({ Bucket: bucket, Key: key });
       return signUrl(s3, command, { expiresIn: expiresInSeconds });
+    },
+
+    // Квота хранилища (см. src/quota/deleteContent.js) — удаление старого
+    // контента только с согласия пользователя, эта функция сама решения не
+    // принимает.
+    async deleteFile(key) {
+      await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
     }
   };
 }

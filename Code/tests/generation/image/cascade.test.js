@@ -66,6 +66,7 @@ test('generates on the cheap tier, downloads the ephemeral URL, and uploads to R
   assert.equal(result.r2Url, r2.uploads[0].key);
   assert.equal(r2.uploads[0].contentType, 'image/png');
   assert.equal(r2.uploads[0].body.toString(), 'fake-image-bytes');
+  assert.equal(result.sizeBytes, Buffer.from('fake-image-bytes').length);
 });
 
 test('sends the correct headers and body on the text_to_image request', async () => {

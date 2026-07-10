@@ -69,6 +69,7 @@ test('generates on the cheap tier, downloads the file, and uploads to R2', async
   assert.equal(result.r2Url, r2.uploads[0].key);
   assert.equal(r2.uploads[0].contentType, 'video/mp4');
   assert.equal(r2.uploads[0].body.toString(), 'fake-video-bytes');
+  assert.equal(result.sizeBytes, Buffer.from('fake-video-bytes').length);
 });
 
 test('sends the correct headers and body on the video_generation request', async () => {

@@ -78,6 +78,7 @@ test('generates on the cheap tier (Deepgram Aura) and uploads to R2', async () =
   assert.equal(r2.uploads[0].contentType, 'audio/mpeg');
   assert.equal(r2.uploads[0].body.toString(), 'fake-audio-bytes');
   assert.ok(result.costUsd > 0);
+  assert.equal(result.sizeBytes, Buffer.from('fake-audio-bytes').length);
 });
 
 test('sends the correct headers and body to Deepgram', async () => {
