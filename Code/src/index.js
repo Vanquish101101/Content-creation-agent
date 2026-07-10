@@ -11,6 +11,9 @@ import { createTrendEnrichment } from './enrichment/enrichWithTrends.js';
 import { createAgent1Notifier } from './delivery/agent1Notifier.js';
 import { createPostMyPostClient } from './publish/postMyPostClient.js';
 import { createContentPublisher } from './publish/publishContent.js';
+import { createMcpHttpServer } from './mcp-server/http.js';
+
+const DEFAULT_MCP_HTTP_PORT = 7303;
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -152,6 +155,17 @@ function requireEnv(name) {
         .catch((err) => console.error('[index] handleWizardJob (poll) failed:', err.message))
   });
   poller.start(POLL_INTERVAL_MS);
+
+  // MCP-сервер (Слайс 10) — выходной интерфейс Агента 4, по аналогии с
+  // Агентами 2/3. Не единственный вход в генерацию (основной путь — Redis/
+  // поллинг выше через intake), но content_generate тоже проходит через тот
+  // же orchestrator.generateContent, так что дедуп/квота/публикация/отчёт
+  // работают одинаково независимо от того, откуда пришёл запрос.
+  const mcpPort = Number(process.env.MCP_HTTP_PORT) || DEFAULT_MCP_HTTP_PORT;
+  const mcpServer = createMcpHttpServer({ db, generateContent: orchestrator.generateContent, port: mcpPort });
+  mcpServer.listen(mcpPort, () => {
+    console.log(`Content Creation Agent: MCP-сервер слушает на порту ${mcpPort} (/mcp, /health)`);
+  });
 
   console.log(`Content Creation Agent: listening on notifications:agent4, polling intelligence_agent.agent4_handoff_queue every ${POLL_INTERVAL_MS}ms`);
 })();
