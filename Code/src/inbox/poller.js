@@ -3,7 +3,7 @@
 // intelligence_agent.agent4_handoff_queue на случай, если Redis-уведомление
 // (быстрый, best-effort слой в subscribe.js) было потеряно. См. «07.
 // Архитектура (Бекенд).md», §4.2.
-import { pollAgent1HandoffQueue } from './pollHandoffQueue.js';
+import { pollAgent1HandoffQueue, markHandoffRowDone } from './pollHandoffQueue.js';
 
 export function createHandoffPoller({ db, onRow }) {
   let intervalHandle = null;
@@ -13,6 +13,7 @@ export function createHandoffPoller({ db, onRow }) {
       const rows = await pollAgent1HandoffQueue(db);
       for (const row of rows) {
         await onRow(row);
+        await markHandoffRowDone(db, row.id);
       }
     } catch (err) {
       console.error('[poller] pollOnce failed:', err.message);

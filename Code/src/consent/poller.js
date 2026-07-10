@@ -3,7 +3,7 @@
 // intelligence_agent.agent4_consent_queue на случай, если Redis-уведомление
 // (быстрый, best-effort слой в subscribe.js) было потеряно. Точное зеркало
 // inbox/poller.js.
-import { pollAgent1ConsentQueue } from './pollConsentQueue.js';
+import { pollAgent1ConsentQueue, markConsentRowDone } from './pollConsentQueue.js';
 
 export function createConsentPoller({ db, onRow }) {
   let intervalHandle = null;
@@ -13,6 +13,7 @@ export function createConsentPoller({ db, onRow }) {
       const rows = await pollAgent1ConsentQueue(db);
       for (const row of rows) {
         await onRow(row);
+        await markConsentRowDone(db, row.id);
       }
     } catch (err) {
       console.error('[consent/poller] pollOnce failed:', err.message);

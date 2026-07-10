@@ -20,3 +20,14 @@ export async function pollAgent1HandoffQueue(db) {
 
   return data ?? [];
 }
+
+export async function markHandoffRowDone(db, id) {
+  const { error } = await db
+    .schema('intelligence_agent')
+    .from('agent4_handoff_queue')
+    .update({ status: 'done' })
+    .eq('id', id);
+  if (error) {
+    console.error(`[pollHandoffQueue] markHandoffRowDone ${id}: ${error.message}`);
+  }
+}

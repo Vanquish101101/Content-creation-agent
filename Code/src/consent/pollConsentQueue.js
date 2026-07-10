@@ -17,3 +17,14 @@ export async function pollAgent1ConsentQueue(db) {
 
   return data ?? [];
 }
+
+export async function markConsentRowDone(db, id) {
+  const { error } = await db
+    .schema('intelligence_agent')
+    .from('agent4_consent_queue')
+    .update({ status: 'done' })
+    .eq('id', id);
+  if (error) {
+    console.error(`[pollConsentQueue] markConsentRowDone ${id}: ${error.message}`);
+  }
+}
