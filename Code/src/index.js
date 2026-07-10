@@ -5,9 +5,10 @@ import { createIntakeHandler } from './inbox/intake.js';
 import { subscribeToInbox } from './inbox/subscribe.js';
 import { createHandoffPoller } from './inbox/poller.js';
 import { createGenerationOrchestrator } from './generation/generate.js';
-import { createR2Client } from './storage/r2Client.js';
+import { createStorageClient } from './storage/createStorageClient.js';
 import { createInformationAnalysisClient } from './mcp-clients/informationAnalysisClient.js';
 import { createTrendEnrichment } from './enrichment/enrichWithTrends.js';
+import { createAgent1Notifier } from './delivery/agent1Notifier.js';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -25,14 +26,22 @@ function requireEnv(name) {
     serviceKey: requireEnv('SUPABASE_SERVICE_KEY')
   });
 
-  // R2 — опционален: text (Слайс 2) не сохраняет файлы и не нуждается в нём.
-  // image/video/audio (Слайсы 4-6) все требуют R2 для загрузки результата —
+  // Обратный канал Агент 4 → Агент 1 (см. src/delivery/agent1Notifier.js) — собран здесь,
+  // но пока не вызывается: первый потребитель появится в Слайсе 8 (запрос подтверждения
+  // модерации) и Слайсе 9 (отчёт о готовом контенте).
+  const notifyAgent1 = createAgent1Notifier({ db, redisUrl: requireEnv('REDIS_URL') });
+
+  // Хранилище — опционально: text (Слайс 2) не сохраняет файлы и не нуждается в нём.
+  // image/video/audio (Слайсы 4-6) все требуют хранилище для загрузки результата —
   // без переменных окружения r2 остаётся null, эти задачи будут падать в
   // своём каскаде с понятной ошибкой, text продолжает работать как прежде.
+  // STORAGE_PROVIDER выбирает backend (см. src/storage/createStorageClient.js);
+  // по умолчанию/пока единственно реализованный — 'r2'.
   const r2EnvVars = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'];
   const r2Configured = r2EnvVars.every((name) => process.env[name]);
   const r2 = r2Configured
-    ? createR2Client({
+    ? createStorageClient({
+        provider: process.env.STORAGE_PROVIDER || 'r2',
         accountId: process.env.R2_ACCOUNT_ID,
         accessKeyId: process.env.R2_ACCESS_KEY_ID,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
@@ -40,7 +49,7 @@ function requireEnv(name) {
       })
     : null;
   if (!r2Configured) {
-    console.warn('[index] R2 not configured — image/video/audio generation will fail to store files; text generation is unaffected');
+    console.warn('[index] Storage not configured — image/video/audio generation will fail to store files; text generation is unaffected');
   }
 
   // deps namespaced по типу контента — text/image/video/audio используют
