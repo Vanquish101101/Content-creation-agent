@@ -204,6 +204,105 @@ test('a quota-check failure does not fail the generation itself', async () => {
   assert.equal(result.status, 'done');
 });
 
+test('mode content (not publish) never calls publish or the moderation notify', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ text: 'x', costUsd: 0, tier: 'cheap', model: 'm' });
+  let publishCalled = false;
+  const notifyCalls = [];
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    publish: async () => { publishCalled = true; return []; },
+    notifyAgent1: async (msg) => notifyCalls.push(msg),
+    _checkQuotaAndWarn: async () => null
+  });
+
+  const result = await orchestrator.generateContent(JOB); // JOB.mode === 'content'
+
+  assert.equal(publishCalled, false);
+  assert.equal(notifyCalls.length, 0);
+  assert.equal(result.status, 'done');
+});
+
+test('mode publish + moderation_mode false calls publish() and marks published on success', async () => {
+  const updates = [];
+  const db = makeDb(updates);
+  const fakeRoute = () => async () => ({ text: 'x', costUsd: 0, tier: 'cheap', model: 'm', r2Url: 'gc-1/img.png' });
+  let publishArgs = null;
+  const publish = async (args) => { publishArgs = args; return [{ network: 'instagram', accountId: 1, status: 'success' }]; };
+  const job = { ...JOB, mode: 'publish', moderation_mode: false };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, publish, _checkQuotaAndWarn: async () => null });
+
+  const result = await orchestrator.generateContent(job);
+
+  assert.deepEqual(publishArgs.wizard, job.wizard);
+  assert.equal(publishArgs.r2Url, 'gc-1/img.png');
+  assert.equal(result.status, 'published');
+  assert.equal(updates.at(-1).status, 'published');
+});
+
+test('mode publish + moderation_mode false marks publish_failed when every account errors', async () => {
+  const updates = [];
+  const db = makeDb(updates);
+  const fakeRoute = () => async () => ({ text: 'x', costUsd: 0, tier: 'cheap', model: 'm' });
+  const publish = async () => [{ network: 'instagram', accountId: 1, status: 'error', reason: 'HTTP 500' }];
+  const job = { ...JOB, mode: 'publish', moderation_mode: false };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, publish, _checkQuotaAndWarn: async () => null });
+
+  const result = await orchestrator.generateContent(job);
+
+  assert.equal(result.status, 'publish_failed');
+});
+
+test('mode publish + moderation_mode false, but publish() itself throws, still resolves (not a hard failure)', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ text: 'x', costUsd: 0, tier: 'cheap', model: 'm' });
+  const publish = async () => { throw new Error('PostMyPost unreachable'); };
+  const job = { ...JOB, mode: 'publish', moderation_mode: false };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, publish, _checkQuotaAndWarn: async () => null });
+
+  const result = await orchestrator.generateContent(job);
+
+  assert.equal(result.status, 'publish_failed');
+  assert.match(result.publishReport[0].reason, /PostMyPost unreachable/);
+});
+
+test('mode publish + moderation_mode false, but no publish dependency configured, marks publish_failed', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ text: 'x', costUsd: 0, tier: 'cheap', model: 'm' });
+  const job = { ...JOB, mode: 'publish', moderation_mode: false };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, _checkQuotaAndWarn: async () => null });
+
+  const result = await orchestrator.generateContent(job);
+
+  assert.equal(result.status, 'publish_failed');
+});
+
+test('mode publish + moderation_mode true sends a moderation_request via notifyAgent1 and pauses instead of publishing', async () => {
+  const updates = [];
+  const db = makeDb(updates);
+  const fakeRoute = () => async () => ({ text: 'x', costUsd: 0, tier: 'cheap', model: 'm' });
+  let publishCalled = false;
+  const notifyCalls = [];
+  const job = { ...JOB, mode: 'publish', moderation_mode: true };
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    publish: async () => { publishCalled = true; return []; },
+    notifyAgent1: async (msg) => notifyCalls.push(msg),
+    _checkQuotaAndWarn: async () => null
+  });
+
+  const result = await orchestrator.generateContent(job);
+
+  assert.equal(publishCalled, false);
+  assert.equal(notifyCalls.length, 1);
+  assert.equal(notifyCalls[0].messageType, 'moderation_request');
+  assert.equal(notifyCalls[0].telegramId, job.telegram_id);
+  assert.equal(result.status, 'pending_moderation');
+  assert.equal(updates.at(-1).status, 'pending_moderation');
+});
+
 test('marks the record as error and rethrows when generation fails', async () => {
   const updates = [];
   const db = makeDb(updates);

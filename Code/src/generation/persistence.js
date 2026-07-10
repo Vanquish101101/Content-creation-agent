@@ -37,6 +37,33 @@ export async function markDone(db, id, { costUsd, metadata, r2Url = null, sizeBy
   }
 }
 
+// Слайс 8 (публикация) — status: 'published' если хотя бы один аккаунт из
+// отчёта опубликован успешно (частичный успех всё равно считается
+// published — пользователь видит по publish_report, где именно не вышло),
+// иначе 'publish_failed'.
+export async function markPublishResult(db, id, publishReport) {
+  const status = publishReport.some((r) => r.status === 'success') ? 'published' : 'publish_failed';
+  const { error } = await db
+    .from('generated_content')
+    .update({ status, publish_report: publishReport })
+    .eq('id', id);
+  if (error) {
+    throw new Error(`markPublishResult: ${error.message}`);
+  }
+}
+
+// Слайс 8 — moderation_mode === true: публикация приостановлена, ждёт
+// подтверждения пользователя через Агента 1 (запрос уходит через
+// notifyAgent1, message_type 'moderation_request', см. generate.js).
+// Возобновление после ответа пользователя блокировано отсутствующим каналом
+// согласия от Агента 1, см. «Доработки для Агентов 1 и 3», пункт E.
+export async function markPendingModeration(db, id) {
+  const { error } = await db.from('generated_content').update({ status: 'pending_moderation' }).eq('id', id);
+  if (error) {
+    throw new Error(`markPendingModeration: ${error.message}`);
+  }
+}
+
 export async function markError(db, id, message) {
   const { error } = await db
     .from('generated_content')

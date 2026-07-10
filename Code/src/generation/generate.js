@@ -3,7 +3,7 @@
 // статуса в generated_content (pending → processing → done|error). Это точка
 // расширения onJob, подключаемая в src/index.js вместо стаб-заглушки Слайса 1.
 import { routeByContentType } from '../router/route.js';
-import { createPendingRecord, markProcessing, markDone, markError } from './persistence.js';
+import { createPendingRecord, markProcessing, markDone, markError, markPublishResult, markPendingModeration } from './persistence.js';
 import { getTotalUsageBytes, getUsageByUser } from '../quota/storageUsage.js';
 import { isOverThreshold } from '../quota/checkQuota.js';
 import { selectWarningCandidate } from '../quota/selectWarningCandidate.js';
@@ -36,6 +36,7 @@ export function createGenerationOrchestrator({
   routeDeps,
   enrich,
   notifyAgent1,
+  publish,
   _checkQuotaAndWarn = defaultCheckQuotaAndWarn
 } = {}) {
   async function generateContent(job) {
@@ -76,7 +77,45 @@ export function createGenerationOrchestrator({
         }
       }
 
-      return { id, status: 'done', ...result };
+      // Слайс 8 — публикация, только когда wizard-режим 'publish' (см.
+      // DISPATCHABLE_MODES в intake.js). 'content' — как и раньше, публикация
+      // вообще не рассматривается.
+      let status = 'done';
+      let publishReport;
+
+      if (job.mode === 'publish') {
+        if (job.moderation_mode) {
+          // Пауза перед публикацией — запрос подтверждения у пользователя
+          // через Агента 1. Фактическое возобновление после ответа
+          // пользователя блокировано отсутствующим каналом согласия от
+          // Агента 1 (см. «Доработки для Агентов 1 и 3», пункт E) — та же
+          // ситуация, что и с quota_warning выше.
+          if (notifyAgent1) {
+            await notifyAgent1({
+              telegramId: job.telegram_id,
+              messageType: 'moderation_request',
+              generatedContentId: id,
+              payload: { wizard: job.wizard, r2Url: result.r2Url ?? null }
+            }).catch((err) => console.error('[generate] moderation_request notify failed:', err.message));
+          }
+          await markPendingModeration(db, id);
+          status = 'pending_moderation';
+        } else if (publish) {
+          try {
+            publishReport = await publish({ wizard: job.wizard, r2Url: result.r2Url ?? null });
+          } catch (publishErr) {
+            publishReport = [{ network: job.wizard.network, accountId: null, status: 'error', reason: publishErr.message }];
+          }
+          await markPublishResult(db, id, publishReport);
+          status = publishReport.some((r) => r.status === 'success') ? 'published' : 'publish_failed';
+        } else {
+          publishReport = [{ network: job.wizard.network, accountId: null, status: 'error', reason: 'PostMyPost not configured' }];
+          await markPublishResult(db, id, publishReport);
+          status = 'publish_failed';
+        }
+      }
+
+      return { id, status, ...result, ...(publishReport ? { publishReport } : {}) };
     } catch (err) {
       await markError(db, id, err.message);
       throw err;

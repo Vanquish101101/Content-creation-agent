@@ -9,6 +9,8 @@ import { createStorageClient } from './storage/createStorageClient.js';
 import { createInformationAnalysisClient } from './mcp-clients/informationAnalysisClient.js';
 import { createTrendEnrichment } from './enrichment/enrichWithTrends.js';
 import { createAgent1Notifier } from './delivery/agent1Notifier.js';
+import { createPostMyPostClient } from './publish/postMyPostClient.js';
+import { createContentPublisher } from './publish/publishContent.js';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -75,10 +77,25 @@ function requireEnv(name) {
     console.warn('[index] INFORMATION_ANALYSIS_AGENT_URL not configured — trend enrichment (Слайс 7) disabled, generation proceeds without it');
   }
 
+  // Публикация (Слайс 8) — опциональна: без POSTMYPOST_API_KEY/POSTMYPOST_PROJECT_ID
+  // publish не передаётся вовсе, mode:'publish' завершится понятным
+  // publish_failed ("PostMyPost not configured"), остальная генерация не страдает.
+  const publish = process.env.POSTMYPOST_API_KEY && process.env.POSTMYPOST_PROJECT_ID
+    ? createContentPublisher({
+        client: createPostMyPostClient({ apiKey: process.env.POSTMYPOST_API_KEY }),
+        r2,
+        projectId: process.env.POSTMYPOST_PROJECT_ID
+      })
+    : undefined;
+  if (!publish) {
+    console.warn('[index] POSTMYPOST_API_KEY/POSTMYPOST_PROJECT_ID not configured — mode:"publish" jobs will be marked publish_failed');
+  }
+
   const orchestrator = createGenerationOrchestrator({
     db,
     enrich,
     notifyAgent1,
+    publish,
     routeDeps: {
       text: {
         apiKey: requireEnv('OPENROUTER_API_KEY'),

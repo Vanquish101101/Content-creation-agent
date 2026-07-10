@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeFakeDb } from '../helpers/fakeSupabase.js';
-import { createPendingRecord, markProcessing, markDone, markError } from '../../src/generation/persistence.js';
+import { createPendingRecord, markProcessing, markDone, markError, markPublishResult, markPendingModeration } from '../../src/generation/persistence.js';
 
 test('createPendingRecord inserts a pending row and returns its id', async () => {
   const db = makeFakeDb({
@@ -101,6 +101,46 @@ test('markDone defaults size_bytes to null when not provided (text slice)', asyn
   });
 
   await markDone(db, 'gc-1', { costUsd: 0.003, metadata: {} });
+});
+
+test('markPublishResult sets status to published when at least one account succeeded', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.status, 'published');
+      assert.deepEqual(state.payload.publish_report, [
+        { network: 'instagram', accountId: 1, status: 'success' },
+        { network: 'instagram', accountId: 2, status: 'error', reason: 'HTTP 500' }
+      ]);
+      return { data: null, error: null };
+    }
+  });
+
+  await markPublishResult(db, 'gc-1', [
+    { network: 'instagram', accountId: 1, status: 'success' },
+    { network: 'instagram', accountId: 2, status: 'error', reason: 'HTTP 500' }
+  ]);
+});
+
+test('markPublishResult sets status to publish_failed when every account failed', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.status, 'publish_failed');
+      return { data: null, error: null };
+    }
+  });
+
+  await markPublishResult(db, 'gc-1', [{ network: 'instagram', accountId: 1, status: 'error', reason: 'HTTP 500' }]);
+});
+
+test('markPendingModeration sets status to pending_moderation', async () => {
+  const db = makeFakeDb({
+    generated_content: (state) => {
+      assert.equal(state.payload.status, 'pending_moderation');
+      return { data: null, error: null };
+    }
+  });
+
+  await markPendingModeration(db, 'gc-1');
 });
 
 test('markError updates status to error with the failure message in metadata', async () => {
