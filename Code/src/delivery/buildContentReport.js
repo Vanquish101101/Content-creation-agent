@@ -4,8 +4,10 @@
 // пометки+ссылка (см. «05. ТЗ», §4.3, «04. Брейншторм», §5): соцсеть, тип,
 // краткое описание задачи, размер файла, готовый текст (для text — своего
 // файла в R2 нет, доставляется прямо в отчёте), результат публикации, если
-// был (Слайс 8). Ссылка на скачивание (presigned R2 URL) добавляется вызывающим
-// кодом (generate.js) — здесь только синхронная часть, без обращения к R2.
+// был (Слайс 8), фактическая стоимость генерации (Слайс 12 — costUsd уже
+// считается с самого Слайса 2, здесь только доносится до пользователя).
+// Ссылка на скачивание (presigned R2 URL) добавляется вызывающим кодом
+// (generate.js) — здесь только синхронная часть, без обращения к R2.
 const DESCRIPTION_PREVIEW_LENGTH = 200;
 
 function previewDescription(description) {
@@ -22,6 +24,7 @@ export function buildContentReport({ wizard, result, publishReport }) {
     description: previewDescription(wizard.description),
     text: result.text ?? null,
     sizeBytes: result.sizeBytes ?? null,
+    costUsd: result.costUsd ?? null,
     ...(publishReport ? { publishReport } : {})
   };
 }

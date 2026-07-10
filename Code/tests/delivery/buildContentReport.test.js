@@ -63,3 +63,21 @@ test('omits publishReport key entirely when not provided (mode content)', () => 
 
   assert.equal('publishReport' in report, false);
 });
+
+test('includes costUsd from the generation result (Слайс 12)', () => {
+  const wizard = { network: 'instagram', content_type: 'text', description: 'x' };
+  const result = { text: 'y', costUsd: 0.001622 };
+
+  const report = buildContentReport({ wizard, result });
+
+  assert.equal(report.costUsd, 0.001622);
+});
+
+test('costUsd defaults to null when the cascade result has none', () => {
+  const wizard = { network: 'instagram', content_type: 'text', description: 'x' };
+  const result = { text: 'y' };
+
+  const report = buildContentReport({ wizard, result });
+
+  assert.equal(report.costUsd, null);
+});
