@@ -5,7 +5,8 @@ import { computeWizardHash } from '../../src/wizard/hash.js';
 import { createIntakeHandler } from '../../src/inbox/intake.js';
 
 const WIZARD = {
-  network: 'instagram',
+  project: 'core',
+  networks: ['instagram'],
   content_type: 'post',
   format: '916',
   style: 'expert',

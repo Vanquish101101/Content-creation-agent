@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createImageCascade } from '../../../src/generation/image/cascade.js';
 
 const WIZARD = {
-  network: 'instagram',
+  project: 'core',
+  networks: ['instagram'],
   content_type: 'image',
   format: '11',
   style: 'expert',

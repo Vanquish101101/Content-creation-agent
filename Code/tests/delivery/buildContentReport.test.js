@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { buildContentReport } from '../../src/delivery/buildContentReport.js';
 
 test('builds a short report from wizard + result for text content', () => {
-  const wizard = { network: 'instagram', content_type: 'text', description: 'Пост про скидку 20%' };
+  const wizard = { project: 'core', networks: ['instagram'], content_type: 'text', description: 'Пост про скидку 20%' };
   const result = { text: 'Готовый пост!', costUsd: 0.001 };
 
   const report = buildContentReport({ wizard, result });
 
-  assert.equal(report.network, 'instagram');
+  assert.equal(report.project, 'core');
+  assert.deepEqual(report.networks, ['instagram']);
   assert.equal(report.contentType, 'text');
   assert.equal(report.description, 'Пост про скидку 20%');
   assert.equal(report.text, 'Готовый пост!');
@@ -16,7 +17,7 @@ test('builds a short report from wizard + result for text content', () => {
 });
 
 test('includes sizeBytes for image/video/audio content', () => {
-  const wizard = { network: 'instagram', content_type: 'video', description: 'Ролик' };
+  const wizard = { project: 'core', networks: ['instagram'], content_type: 'video', description: 'Ролик' };
   const result = { r2Url: 'gc-1/video.mp4', sizeBytes: 654321, costUsd: 0.2 };
 
   const report = buildContentReport({ wizard, result });
@@ -27,7 +28,7 @@ test('includes sizeBytes for image/video/audio content', () => {
 
 test('truncates a long description to a short preview', () => {
   const longDescription = 'x'.repeat(300);
-  const wizard = { network: 'instagram', content_type: 'text', description: longDescription };
+  const wizard = { project: 'core', networks: ['instagram'], content_type: 'text', description: longDescription };
   const result = { text: 'y' };
 
   const report = buildContentReport({ wizard, result });
@@ -37,7 +38,7 @@ test('truncates a long description to a short preview', () => {
 });
 
 test('does not truncate a short description', () => {
-  const wizard = { network: 'instagram', content_type: 'text', description: 'короткое' };
+  const wizard = { project: 'core', networks: ['instagram'], content_type: 'text', description: 'короткое' };
   const result = { text: 'y' };
 
   const report = buildContentReport({ wizard, result });
@@ -46,7 +47,7 @@ test('does not truncate a short description', () => {
 });
 
 test('includes publishReport when provided', () => {
-  const wizard = { network: 'instagram', content_type: 'text', description: 'x' };
+  const wizard = { project: 'core', networks: ['instagram'], content_type: 'text', description: 'x' };
   const result = { text: 'y' };
   const publishReport = [{ network: 'instagram', accountId: 1, status: 'success' }];
 
@@ -56,7 +57,7 @@ test('includes publishReport when provided', () => {
 });
 
 test('omits publishReport key entirely when not provided (mode content)', () => {
-  const wizard = { network: 'instagram', content_type: 'text', description: 'x' };
+  const wizard = { project: 'core', networks: ['instagram'], content_type: 'text', description: 'x' };
   const result = { text: 'y' };
 
   const report = buildContentReport({ wizard, result });
@@ -65,7 +66,7 @@ test('omits publishReport key entirely when not provided (mode content)', () => 
 });
 
 test('includes costUsd from the generation result (Слайс 12)', () => {
-  const wizard = { network: 'instagram', content_type: 'text', description: 'x' };
+  const wizard = { project: 'core', networks: ['instagram'], content_type: 'text', description: 'x' };
   const result = { text: 'y', costUsd: 0.001622 };
 
   const report = buildContentReport({ wizard, result });
@@ -74,7 +75,7 @@ test('includes costUsd from the generation result (Слайс 12)', () => {
 });
 
 test('costUsd defaults to null when the cascade result has none', () => {
-  const wizard = { network: 'instagram', content_type: 'text', description: 'x' };
+  const wizard = { project: 'core', networks: ['instagram'], content_type: 'text', description: 'x' };
   const result = { text: 'y' };
 
   const report = buildContentReport({ wizard, result });

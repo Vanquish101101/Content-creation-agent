@@ -71,7 +71,7 @@ export function createTextCascade({
 function buildPrompt(wizard) {
   return `Ты — копирайтер, который создаёт посты для социальных сетей.
 
-Соцсеть: ${wizard.network}
+Соцсети: ${(wizard.networks ?? []).join(', ')}
 Тип контента: ${wizard.content_type}
 Формат: ${wizard.format}
 Стиль подачи: ${wizard.style}

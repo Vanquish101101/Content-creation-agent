@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createCarouselCascade } from '../../../src/generation/carousel/cascade.js';
 
 const WIZARD = {
-  network: 'instagram',
+  project: 'core',
+  networks: ['instagram'],
   content_type: 'carousel',
   format: '11',
   style: 'expert',

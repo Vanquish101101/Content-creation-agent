@@ -10,7 +10,7 @@ test('fetchWizardSettings queries intelligence_agent.users via .schema()', async
         telegram_id: 123,
         settings: {
           mode: 'content',
-          wizard: { network: 'instagram', content_type: 'post', format: '916', style: 'expert', description: 'test' },
+          wizard: { project: 'core', networks: ['instagram'], content_type: 'post', format: '916', style: 'expert', description: 'test' },
           moderation_mode: false
         }
       },
@@ -30,7 +30,7 @@ test('fetchWizardSettings returns the parsed settings object', async () => {
         telegram_id: 123,
         settings: {
           mode: 'publish',
-          wizard: { network: 'tiktok', content_type: 'video', format: '916', style: 'fun', description: 'реклама' },
+          wizard: { project: 'core', networks: ['tiktok'], content_type: 'video', format: '916', style: 'fun', description: 'реклама' },
           moderation_mode: true
         }
       },
@@ -42,7 +42,7 @@ test('fetchWizardSettings returns the parsed settings object', async () => {
 
   assert.deepEqual(settings, {
     mode: 'publish',
-    wizard: { network: 'tiktok', content_type: 'video', format: '916', style: 'fun', description: 'реклама' },
+    wizard: { project: 'core', networks: ['tiktok'], content_type: 'video', format: '916', style: 'fun', description: 'реклама' },
     moderation_mode: true
   });
 });

@@ -16,7 +16,8 @@ function fakeFetch(responses) {
 }
 
 const WIZARD = {
-  network: 'instagram',
+  project: 'core',
+  networks: ['instagram'],
   content_type: 'post',
   format: '916',
   style: 'expert',

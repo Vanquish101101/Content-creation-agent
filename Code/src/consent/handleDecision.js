@@ -47,12 +47,12 @@ async function handlePublishModeration(db, r2, publish, notifyAgent1, row, gener
 
   let publishReport;
   if (!publish) {
-    publishReport = [{ network: wizard.network, accountId: null, status: 'error', reason: 'PostMyPost not configured' }];
+    publishReport = (wizard.networks ?? []).map((network) => ({ network, accountId: null, status: 'error', reason: 'PostMyPost not configured' }));
   } else {
     try {
       publishReport = await publish({ wizard, r2Urls: files.map((f) => f.r2Url) });
     } catch (err) {
-      publishReport = [{ network: wizard.network, accountId: null, status: 'error', reason: err.message }];
+      publishReport = (wizard.networks ?? []).map((network) => ({ network, accountId: null, status: 'error', reason: err.message }));
     }
   }
   await markPublishResult(db, generatedContentId, publishReport);

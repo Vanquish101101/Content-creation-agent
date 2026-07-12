@@ -7,6 +7,17 @@
 //
 // Загрузка файла — через presigned R2-ссылку (Upload by Link), не поток
 // байтов — см. postMyPostClient.js.
+//
+// Мультивыбор сетей + выбор PostMyPost-проекта (2026-07-12, по прямому
+// запросу пользователя — на аккаунте теперь два проекта: "Marketing" и
+// "Project CORE", каждый со своими подключёнными соцсетями). wizard.project
+// (код проекта, напр. 'marketing') резолвится в реальный numeric project_id
+// через карту `projects`, переданную при создании паблишера — заменяет
+// прежний фиксированный `projectId` в конструкторе, т.к. project теперь
+// выбирается за запрос, а не один раз на весь процесс. wizard.network
+// (строка) заменён на wizard.networks (массив) — публикация проходит по
+// каждой запрошенной сети независимо, ошибка по одной сети не блокирует
+// остальные.
 import { resolveTargetAccounts } from './resolveTargetAccounts.js';
 import { mapContentTypeToPublicationType } from './mapContentType.js';
 
@@ -24,7 +35,7 @@ function defaultSleep(ms) {
 export function createContentPublisher({
   client,
   r2,
-  projectId,
+  projects,
   pollIntervalMs = 2000,
   maxPollAttempts = 15,
   _sleep = defaultSleep
@@ -32,8 +43,8 @@ export function createContentPublisher({
   if (!client) {
     throw new Error('createContentPublisher: client is required');
   }
-  if (!projectId) {
-    throw new Error('createContentPublisher: projectId is required');
+  if (!projects || Object.keys(projects).length === 0) {
+    throw new Error('createContentPublisher: projects is required (map of project code -> PostMyPost project_id)');
   }
 
   async function pollUploadFileId(uploadId) {
@@ -62,9 +73,26 @@ export function createContentPublisher({
   }
 
   return async function publishContent({ wizard, r2Urls }) {
-    const accounts = await resolveTargetAccounts(client, projectId, wizard.network);
-    if (accounts.length === 0) {
-      return [{ network: wizard.network, accountId: null, status: 'error', reason: 'no connected PostMyPost account for this network' }];
+    const networks = wizard.networks ?? [];
+    const projectId = projects[wizard.project];
+    if (!projectId) {
+      return networks.map((network) => ({
+        network,
+        accountId: null,
+        status: 'error',
+        reason: `unknown or unconfigured PostMyPost project "${wizard.project}"`
+      }));
+    }
+
+    const targets = await resolveTargetAccounts(client, projectId, networks);
+    const hasAnyAccount = targets.some((t) => t.accounts.length > 0);
+    if (!hasAnyAccount) {
+      return targets.map(({ network }) => ({
+        network,
+        accountId: null,
+        status: 'error',
+        reason: 'no connected PostMyPost account for this network'
+      }));
     }
 
     const publicationType = mapContentTypeToPublicationType(wizard.content_type, wizard.format);
@@ -75,10 +103,11 @@ export function createContentPublisher({
       // PostMyPost принимает несколько file_ids в одной details[].file_ids
       // (help.postmypost.io/docs/api/create-publication) — та же публикация,
       // что и для одного файла, просто массив длиннее 1. Загрузка общая на
-      // все аккаунты — если хотя бы одна из N загрузок не удалась, ни одна
-      // публикация всё равно не сможет прикрепить полный набор файлов,
-      // поэтому сразу возвращаем отчёт об ошибке по каждому аккаунту, не
-      // пытаясь публиковать с неполным набором файлов.
+      // все аккаунты ВО ВСЕХ сетях — если хотя бы одна из N загрузок не
+      // удалась, ни одна публикация всё равно не сможет прикрепить полный
+      // набор файлов, поэтому сразу возвращаем отчёт об ошибке по каждому
+      // аккаунту в каждой запрошенной сети, не пытаясь публиковать с
+      // неполным набором файлов.
       try {
         fileIds = [];
         for (const r2Url of r2Urls) {
@@ -87,36 +116,44 @@ export function createContentPublisher({
           fileIds.push(await pollUploadFileId(upload.id));
         }
       } catch (err) {
-        return accounts.map((account) => ({
-          network: wizard.network,
-          accountId: account.id,
-          status: 'error',
-          reason: `file upload failed: ${err.message}`
-        }));
+        return targets.flatMap(({ network, accounts }) =>
+          (accounts.length ? accounts : [{ id: null }]).map((account) => ({
+            network,
+            accountId: account.id,
+            status: 'error',
+            reason: `file upload failed: ${err.message}`
+          }))
+        );
       }
     }
 
     const report = [];
-    for (const account of accounts) {
-      try {
-        const publication = await client.createPublication({
-          projectId,
-          postAt: new Date().toISOString(),
-          accountIds: [account.id],
-          publicationStatus: 5,
-          details: [{ account_id: account.id, publication_type: publicationType, content: wizard.description, file_ids: fileIds }]
-        });
-        const finalStatus = await pollPublicationStatus(publication.id);
-        const success = finalStatus === PUBLICATION_PUBLISHED;
-        report.push({
-          network: wizard.network,
-          accountId: account.id,
-          publicationId: publication.id,
-          status: success ? 'success' : 'error',
-          reason: success ? null : `publication_status=${finalStatus}`
-        });
-      } catch (err) {
-        report.push({ network: wizard.network, accountId: account.id, status: 'error', reason: err.message });
+    for (const { network, accounts } of targets) {
+      if (accounts.length === 0) {
+        report.push({ network, accountId: null, status: 'error', reason: 'no connected PostMyPost account for this network' });
+        continue;
+      }
+      for (const account of accounts) {
+        try {
+          const publication = await client.createPublication({
+            projectId,
+            postAt: new Date().toISOString(),
+            accountIds: [account.id],
+            publicationStatus: 5,
+            details: [{ account_id: account.id, publication_type: publicationType, content: wizard.description, file_ids: fileIds }]
+          });
+          const finalStatus = await pollPublicationStatus(publication.id);
+          const success = finalStatus === PUBLICATION_PUBLISHED;
+          report.push({
+            network,
+            accountId: account.id,
+            publicationId: publication.id,
+            status: success ? 'success' : 'error',
+            reason: success ? null : `publication_status=${finalStatus}`
+          });
+        } catch (err) {
+          report.push({ network, accountId: account.id, status: 'error', reason: err.message });
+        }
       }
     }
     return report;

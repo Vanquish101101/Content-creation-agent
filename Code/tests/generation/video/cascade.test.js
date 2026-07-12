@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createVideoCascade } from '../../../src/generation/video/cascade.js';
 
 const WIZARD = {
-  network: 'instagram',
+  project: 'core',
+  networks: ['instagram'],
   content_type: 'video',
   format: '916',
   style: 'expert',

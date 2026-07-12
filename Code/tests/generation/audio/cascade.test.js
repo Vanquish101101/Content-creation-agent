@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { createAudioCascade } from '../../../src/generation/audio/cascade.js';
 
 const WIZARD = {
-  network: 'instagram',
+  project: 'core',
+  networks: ['instagram'],
   content_type: 'audio',
   format: 'mp3',
   style: 'expert',

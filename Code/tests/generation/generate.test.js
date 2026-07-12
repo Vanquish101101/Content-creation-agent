@@ -6,7 +6,7 @@ import { createGenerationOrchestrator } from '../../src/generation/generate.js';
 const JOB = {
   telegram_id: 123,
   wizard_hash: 'abc',
-  wizard: { network: 'instagram', content_type: 'text', format: '916', style: 'expert', description: 'test' },
+  wizard: { project: 'core', networks: ['instagram'], content_type: 'text', format: '916', style: 'expert', description: 'test' },
   mode: 'content',
   moderation_mode: false
 };

@@ -2,9 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createContentPublisher } from '../../src/publish/publishContent.js';
 
-const TEXT_WIZARD = { network: 'instagram', content_type: 'text', format: '11', description: 'Пост про скидку' };
-const IMAGE_WIZARD = { network: 'instagram', content_type: 'image', format: '11', description: 'Картинка про скидку' };
-const CAROUSEL_WIZARD = { network: 'instagram', content_type: 'carousel', format: '11', description: 'Карусель про скидку' };
+const PROJECTS = { core: 245678 };
+
+const TEXT_WIZARD = { project: 'core', networks: ['instagram'], content_type: 'text', format: '11', description: 'Пост про скидку' };
+const IMAGE_WIZARD = { project: 'core', networks: ['instagram'], content_type: 'image', format: '11', description: 'Картинка про скидку' };
+const CAROUSEL_WIZARD = { project: 'core', networks: ['instagram'], content_type: 'carousel', format: '11', description: 'Карусель про скидку' };
 
 function fakeR2(signedUrl = 'https://r2.example/signed/file') {
   return { getSignedDownloadUrl: async () => signedUrl };
@@ -25,19 +27,31 @@ function fakeClient(overrides = {}) {
 
 test('reports a single error entry when no connected account matches the network', async () => {
   const client = fakeClient({ getAccounts: async () => [] });
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: TEXT_WIZARD, r2Urls: [] });
 
   assert.equal(report.length, 1);
+  assert.equal(report[0].network, 'instagram');
   assert.equal(report[0].status, 'error');
   assert.match(report[0].reason, /no connected/);
+});
+
+test('reports an error per network when wizard.project is unknown or unconfigured', async () => {
+  const client = fakeClient();
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
+
+  const report = await publisher({ wizard: { ...TEXT_WIZARD, project: 'marketing', networks: ['instagram', 'telegram'] }, r2Urls: [] });
+
+  assert.equal(report.length, 2);
+  assert.ok(report.every((r) => r.status === 'error'));
+  assert.match(report[0].reason, /unknown or unconfigured PostMyPost project/);
 });
 
 test('text content (no r2Urls) skips upload and publishes directly', async () => {
   let uploadCalled = false;
   const client = fakeClient({ uploadFileByUrl: async () => { uploadCalled = true; return {}; } });
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: TEXT_WIZARD, r2Urls: [] });
 
@@ -50,7 +64,7 @@ test('image content (one r2Url) signs the URL, uploads by link, and includes the
   const client = fakeClient({
     createPublication: async (body) => { createPublicationBody = body; return { id: 345678, publication_status: 5 }; }
   });
-  const publisher = createContentPublisher({ client, r2: fakeR2('https://r2.example/signed/img.png'), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2('https://r2.example/signed/img.png'), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: IMAGE_WIZARD, r2Urls: ['gc-1/img.png'] });
 
@@ -68,7 +82,7 @@ test('carousel content (multiple r2Urls) uploads every file and includes all res
     uploadFileByUrl: async ({ url }) => { uploadedUrls.push(url); return { id: 1283466, status: 5 }; },
     createPublication: async (body) => { createPublicationBody = body; return { id: 345678, publication_status: 5 }; }
   });
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: CAROUSEL_WIZARD, r2Urls: ['gc-1/carousel-0.png', 'gc-1/carousel-1.png', 'gc-1/carousel-2.png'] });
 
@@ -79,7 +93,7 @@ test('carousel content (multiple r2Urls) uploads every file and includes all res
 
 test('publication that ends in error status (3) is reported as error with the status in the reason', async () => {
   const client = fakeClient({ getPublication: async () => ({ id: 345678, publication_status: 3 }) });
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: TEXT_WIZARD, r2Urls: [] });
 
@@ -96,7 +110,7 @@ test('polls the publication status until it reaches a terminal state', async () 
       return { id: 345678, publication_status: 1 };
     }
   });
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: TEXT_WIZARD, r2Urls: [] });
 
@@ -111,7 +125,7 @@ test('publishes once per connected account, producing one report entry each', as
       { id: 2, chanel_id: 4, name: 'IG 2', connection_status: 1 }
     ]
   });
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: TEXT_WIZARD, r2Urls: [] });
 
@@ -132,7 +146,7 @@ test('a createPublication failure for one account does not stop the others', asy
       return { id: 345678, publication_status: 5 };
     }
   });
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: TEXT_WIZARD, r2Urls: [] });
 
@@ -151,7 +165,7 @@ test('an upload failure produces an error report for every target account withou
   });
   let publishCalled = false;
   client.createPublication = async () => { publishCalled = true; return { id: 1, publication_status: 1 }; };
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: IMAGE_WIZARD, r2Urls: ['gc-1/img.png'] });
 
@@ -175,7 +189,7 @@ test('an upload failure partway through a carousel upload stops before publishin
   });
   let publishCalled = false;
   client.createPublication = async () => { publishCalled = true; return { id: 1, publication_status: 1 }; };
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   const report = await publisher({ wizard: CAROUSEL_WIZARD, r2Urls: ['gc-1/c0.png', 'gc-1/c1.png', 'gc-1/c2.png'] });
 
@@ -185,10 +199,57 @@ test('an upload failure partway through a carousel upload stops before publishin
 
 test('throws a clear error for audio content (unsupported by PostMyPost)', async () => {
   const client = fakeClient();
-  const publisher = createContentPublisher({ client, r2: fakeR2(), projectId: 245678, _sleep: async () => {} });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
 
   await assert.rejects(
     () => publisher({ wizard: { ...TEXT_WIZARD, content_type: 'audio' }, r2Urls: ['gc-1/audio.mp3'] }),
     /no audio-post concept/
   );
+});
+
+// Мультивыбор сетей (2026-07-12) — публикация теперь целится сразу в
+// несколько соцсетей за один вызов.
+test('publishes to multiple requested networks in one call, producing report entries per network', async () => {
+  const client = fakeClient({
+    getChannels: async () => [{ id: 4, code: 'instagram', name: 'Instagram' }, { id: 6, code: 'telegram', name: 'Telegram' }],
+    getAccounts: async () => [
+      { id: 1, chanel_id: 4, name: 'IG', connection_status: 1 },
+      { id: 2, chanel_id: 6, name: 'TG', connection_status: 1 }
+    ]
+  });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
+
+  const report = await publisher({ wizard: { ...TEXT_WIZARD, networks: ['instagram', 'telegram'] }, r2Urls: [] });
+
+  assert.equal(report.length, 2);
+  assert.deepEqual(report.map((r) => r.network).sort(), ['instagram', 'telegram']);
+  assert.ok(report.every((r) => r.status === 'success'));
+});
+
+test('a network with no connected account still gets an error entry while the other networks still publish', async () => {
+  const client = fakeClient({
+    getChannels: async () => [{ id: 4, code: 'instagram', name: 'Instagram' }, { id: 6, code: 'telegram', name: 'Telegram' }],
+    getAccounts: async () => [{ id: 1, chanel_id: 4, name: 'IG', connection_status: 1 }]
+  });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: PROJECTS, _sleep: async () => {} });
+
+  const report = await publisher({ wizard: { ...TEXT_WIZARD, networks: ['instagram', 'telegram'] }, r2Urls: [] });
+
+  const ig = report.find((r) => r.network === 'instagram');
+  const tg = report.find((r) => r.network === 'telegram');
+  assert.equal(ig.status, 'success');
+  assert.equal(tg.status, 'error');
+  assert.match(tg.reason, /no connected/);
+});
+
+test('resolves the projectId for the correct project code', async () => {
+  let seenProjectId = null;
+  const client = fakeClient({
+    getAccounts: async (projectId) => { seenProjectId = projectId; return [{ id: 1, chanel_id: 4, name: 'IG', connection_status: 1 }]; }
+  });
+  const publisher = createContentPublisher({ client, r2: fakeR2(), projects: { marketing: 351825, core: 245678 }, _sleep: async () => {} });
+
+  await publisher({ wizard: { ...TEXT_WIZARD, project: 'marketing' }, r2Urls: [] });
+
+  assert.equal(seenProjectId, 351825);
 });

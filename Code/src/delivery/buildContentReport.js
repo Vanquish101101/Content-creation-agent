@@ -19,7 +19,8 @@ function previewDescription(description) {
 
 export function buildContentReport({ wizard, result, publishReport }) {
   return {
-    network: wizard.network,
+    project: wizard.project,
+    networks: wizard.networks,
     contentType: wizard.content_type,
     description: previewDescription(wizard.description),
     text: result.text ?? null,

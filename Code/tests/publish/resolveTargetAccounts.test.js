@@ -21,9 +21,9 @@ test('resolves accounts whose chanel_id matches the network code and is connecte
     ]
   });
 
-  const result = await resolveTargetAccounts(client, 245678, 'instagram');
+  const result = await resolveTargetAccounts(client, 245678, ['instagram']);
 
-  assert.deepEqual(result, [{ id: 33915, chanel_id: 4, name: 'My IG', connection_status: 1 }]);
+  assert.deepEqual(result, [{ network: 'instagram', accounts: [{ id: 33915, chanel_id: 4, name: 'My IG', connection_status: 1 }] }]);
 });
 
 test('is case-insensitive when matching the network code', async () => {
@@ -32,9 +32,9 @@ test('is case-insensitive when matching the network code', async () => {
     accounts: [{ id: 33915, chanel_id: 4, name: 'My IG', connection_status: 1 }]
   });
 
-  const result = await resolveTargetAccounts(client, 245678, 'Instagram');
+  const result = await resolveTargetAccounts(client, 245678, ['Instagram']);
 
-  assert.equal(result.length, 1);
+  assert.equal(result[0].accounts.length, 1);
 });
 
 test('excludes accounts that are not connected (connection_status !== 1)', async () => {
@@ -46,18 +46,43 @@ test('excludes accounts that are not connected (connection_status !== 1)', async
     ]
   });
 
-  const result = await resolveTargetAccounts(client, 245678, 'instagram');
+  const result = await resolveTargetAccounts(client, 245678, ['instagram']);
 
-  assert.deepEqual(result.map((a) => a.id), [33915]);
+  assert.deepEqual(result[0].accounts.map((a) => a.id), [33915]);
 });
 
-test('returns an empty array when no channel matches the requested network', async () => {
+test('returns an entry with an empty accounts array when no channel matches the requested network', async () => {
   const client = fakeClient({
     channels: [{ id: 4, code: 'instagram', name: 'Instagram' }],
     accounts: [{ id: 33915, chanel_id: 4, name: 'My IG', connection_status: 1 }]
   });
 
-  const result = await resolveTargetAccounts(client, 245678, 'tiktok');
+  const result = await resolveTargetAccounts(client, 245678, ['tiktok']);
 
-  assert.deepEqual(result, []);
+  assert.deepEqual(result, [{ network: 'tiktok', accounts: [] }]);
+});
+
+test('resolves multiple requested networks in one call, one entry each, calling getChannels/getAccounts only once', async () => {
+  let getChannelsCalls = 0;
+  let getAccountsCalls = 0;
+  const client = {
+    getChannels: async () => {
+      getChannelsCalls += 1;
+      return [{ id: 4, code: 'instagram', name: 'Instagram' }, { id: 6, code: 'telegram', name: 'Telegram' }];
+    },
+    getAccounts: async () => {
+      getAccountsCalls += 1;
+      return [
+        { id: 1, chanel_id: 4, name: 'IG', connection_status: 1 },
+        { id: 2, chanel_id: 6, name: 'TG', connection_status: 1 }
+      ];
+    }
+  };
+
+  const result = await resolveTargetAccounts(client, 245678, ['instagram', 'telegram', 'vk']);
+
+  assert.equal(getChannelsCalls, 1);
+  assert.equal(getAccountsCalls, 1);
+  assert.deepEqual(result.map((r) => r.network), ['instagram', 'telegram', 'vk']);
+  assert.deepEqual(result.map((r) => r.accounts.map((a) => a.id)), [[1], [2], []]);
 });

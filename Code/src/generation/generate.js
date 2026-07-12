@@ -147,12 +147,12 @@ export function createGenerationOrchestrator({
           try {
             publishReport = await publish({ wizard: job.wizard, r2Urls: files.map((f) => f.r2Url) });
           } catch (publishErr) {
-            publishReport = [{ network: job.wizard.network, accountId: null, status: 'error', reason: publishErr.message }];
+            publishReport = (job.wizard.networks ?? []).map((network) => ({ network, accountId: null, status: 'error', reason: publishErr.message }));
           }
           await markPublishResult(db, id, publishReport);
           status = publishReport.some((r) => r.status === 'success') ? 'published' : 'publish_failed';
         } else {
-          publishReport = [{ network: job.wizard.network, accountId: null, status: 'error', reason: 'PostMyPost not configured' }];
+          publishReport = (job.wizard.networks ?? []).map((network) => ({ network, accountId: null, status: 'error', reason: 'PostMyPost not configured' }));
           await markPublishResult(db, id, publishReport);
           status = 'publish_failed';
         }

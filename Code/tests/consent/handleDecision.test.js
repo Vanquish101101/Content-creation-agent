@@ -54,7 +54,7 @@ test('publish_moderation + approved reconstructs the wizard from metadata, publi
     status: 'pending_moderation',
     r2_url: 'gc-1/img.png',
     telegram_id: 123,
-    metadata: { wizard: { network: 'instagram', content_type: 'image', description: 'x' }, text: null },
+    metadata: { wizard: { project: 'core', networks: ['instagram'], content_type: 'image', description: 'x' }, text: null },
     size_bytes: 500,
     cost_usd: 0.02
   };
@@ -88,7 +88,7 @@ test('publish_moderation + approved for a carousel publishes every file and repo
     r2_url: 'gc-1/carousel-0.png',
     telegram_id: 123,
     metadata: {
-      wizard: { network: 'instagram', content_type: 'carousel', description: 'x' },
+      wizard: { project: 'core', networks: ['instagram'], content_type: 'carousel', description: 'x' },
       text: null,
       files: [{ r2Url: 'gc-1/carousel-0.png' }, { r2Url: 'gc-1/carousel-1.png' }, { r2Url: 'gc-1/carousel-2.png' }]
     },
@@ -111,7 +111,7 @@ test('publish_moderation + approved for a carousel publishes every file and repo
 
 test('publish_moderation + rejected marks publish_rejected without calling publish', async () => {
   const updates = [];
-  const db = makeDb({ id: 'gc-1', status: 'pending_moderation', metadata: { wizard: { network: 'instagram' } } }, updates);
+  const db = makeDb({ id: 'gc-1', status: 'pending_moderation', metadata: { wizard: { project: 'core', networks: ['instagram'] } } }, updates);
   let publishCalled = false;
   const handleDecision = createDecisionHandler({ db, publish: async () => { publishCalled = true; return []; } });
 
@@ -131,19 +131,22 @@ test('publish_moderation is idempotent — skips content no longer pending_moder
   assert.equal(publishCalled, false);
 });
 
-test('publish_moderation + approved marks publish_failed when publish is not configured', async () => {
+test('publish_moderation + approved marks publish_failed when publish is not configured, one error entry per network', async () => {
   const updates = [];
-  const db = makeDb({ id: 'gc-1', status: 'pending_moderation', metadata: { wizard: { network: 'instagram' } } }, updates);
+  const db = makeDb({ id: 'gc-1', status: 'pending_moderation', metadata: { wizard: { project: 'core', networks: ['instagram', 'telegram'] } } }, updates);
   const handleDecision = createDecisionHandler({ db });
 
   await handleDecision({ generatedContentId: 'gc-1', decisionType: 'publish_moderation', decision: 'approved' });
 
-  assert.ok(updates.some((u) => u.status === 'publish_failed'));
+  const finalUpdate = updates.at(-1);
+  assert.equal(finalUpdate.status, 'publish_failed');
+  assert.deepEqual(finalUpdate.publish_report.map((r) => r.network).sort(), ['instagram', 'telegram']);
+  assert.ok(finalUpdate.publish_report.every((r) => r.reason === 'PostMyPost not configured'));
 });
 
 test('publish_moderation + approved catches a publish() failure without throwing', async () => {
   const updates = [];
-  const db = makeDb({ id: 'gc-1', status: 'pending_moderation', metadata: { wizard: { network: 'instagram' } } }, updates);
+  const db = makeDb({ id: 'gc-1', status: 'pending_moderation', metadata: { wizard: { project: 'core', networks: ['instagram'] } } }, updates);
   const handleDecision = createDecisionHandler({ db, publish: async () => { throw new Error('PostMyPost unreachable'); } });
 
   await assert.doesNotReject(() =>

@@ -4,7 +4,8 @@ import { computeWizardHash } from '../../src/wizard/hash.js';
 
 test('computeWizardHash returns the same hash for the same wizard fields', () => {
   const wizard = {
-    network: 'instagram',
+    project: 'core',
+    networks: ['instagram'],
     content_type: 'post',
     format: '916',
     style: 'expert',
@@ -19,7 +20,8 @@ test('computeWizardHash returns the same hash for the same wizard fields', () =>
 
 test('computeWizardHash returns a different hash when description changes', () => {
   const base = {
-    network: 'instagram',
+    project: 'core',
+    networks: ['instagram'],
     content_type: 'post',
     format: '916',
     style: 'expert',
@@ -33,7 +35,8 @@ test('computeWizardHash returns a different hash when description changes', () =
 
 test('computeWizardHash returns a different hash when use_trends changes', () => {
   const base = {
-    network: 'instagram',
+    project: 'core',
+    networks: ['instagram'],
     content_type: 'post',
     format: '916',
     style: 'expert',
@@ -44,9 +47,58 @@ test('computeWizardHash returns a different hash when use_trends changes', () =>
   assert.notEqual(computeWizardHash(base), computeWizardHash({ ...base, use_trends: true }));
 });
 
+test('computeWizardHash returns a different hash when project changes', () => {
+  const base = {
+    project: 'core',
+    networks: ['instagram'],
+    content_type: 'post',
+    format: '916',
+    style: 'expert',
+    description: 'Пост про маркетинг'
+  };
+
+  assert.notEqual(computeWizardHash(base), computeWizardHash({ ...base, project: 'marketing' }));
+});
+
+test('computeWizardHash returns a different hash when the set of networks changes', () => {
+  const base = {
+    project: 'core',
+    networks: ['instagram'],
+    content_type: 'post',
+    format: '916',
+    style: 'expert',
+    description: 'Пост про маркетинг'
+  };
+
+  assert.notEqual(computeWizardHash(base), computeWizardHash({ ...base, networks: ['instagram', 'telegram'] }));
+});
+
+test('computeWizardHash is independent of the order networks were selected in', () => {
+  const a = computeWizardHash({
+    project: 'core',
+    networks: ['instagram', 'telegram'],
+    content_type: 'video',
+    format: '916',
+    style: 'fun',
+    description: 'Reels про тренды'
+  });
+
+  const b = computeWizardHash({
+    project: 'core',
+    networks: ['telegram', 'instagram'],
+    content_type: 'video',
+    format: '916',
+    style: 'fun',
+    description: 'Reels про тренды'
+  });
+
+  assert.equal(a, b);
+});
+
 test('computeWizardHash is independent of key order', () => {
   const a = computeWizardHash({
-    network: 'tiktok',
+    project: 'core',
+    networks: ['tiktok'],
     content_type: 'video',
     format: '916',
     style: 'fun',
@@ -58,7 +110,8 @@ test('computeWizardHash is independent of key order', () => {
     style: 'fun',
     format: '916',
     content_type: 'video',
-    network: 'tiktok'
+    networks: ['tiktok'],
+    project: 'core'
   });
 
   assert.equal(a, b);

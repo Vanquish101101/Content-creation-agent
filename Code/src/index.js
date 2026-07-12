@@ -92,18 +92,30 @@ function requireEnv(name) {
     console.warn('[index] INFORMATION_ANALYSIS_AGENT_URL not configured — trend enrichment (Слайс 7) disabled, generation proceeds without it');
   }
 
-  // Публикация (Слайс 8) — опциональна: без POSTMYPOST_API_KEY/POSTMYPOST_PROJECT_ID
-  // publish не передаётся вовсе, mode:'publish' завершится понятным
-  // publish_failed ("PostMyPost not configured"), остальная генерация не страдает.
-  const publish = process.env.POSTMYPOST_API_KEY && process.env.POSTMYPOST_PROJECT_ID
+  // Публикация (Слайс 8) — опциональна: без POSTMYPOST_API_KEY/хотя бы одного
+  // проекта publish не передаётся вовсе, mode:'publish' завершится понятным
+  // publish_failed ("PostMyPost not configured"), остальная генерация не
+  // страдает.
+  //
+  // Два PostMyPost-проекта на одном аккаунте (2026-07-12, по прямому
+  // указанию пользователя) — "Marketing" (реклама/маркетинг) и "Project CORE"
+  // (личный информационный канал), каждый со своими подключёнными соцсетями.
+  // wizard.project (код 'marketing'/'core') резолвится в реальный numeric
+  // project_id через эту карту — см. publishContent.js. Оба ключа опциональны
+  // независимо — можно донастроить второй проект позже, не трогая код.
+  const postMyPostProjects = {
+    ...(process.env.POSTMYPOST_PROJECT_MARKETING_ID ? { marketing: process.env.POSTMYPOST_PROJECT_MARKETING_ID } : {}),
+    ...(process.env.POSTMYPOST_PROJECT_CORE_ID ? { core: process.env.POSTMYPOST_PROJECT_CORE_ID } : {})
+  };
+  const publish = process.env.POSTMYPOST_API_KEY && Object.keys(postMyPostProjects).length > 0
     ? createContentPublisher({
         client: createPostMyPostClient({ apiKey: process.env.POSTMYPOST_API_KEY }),
         r2,
-        projectId: process.env.POSTMYPOST_PROJECT_ID
+        projects: postMyPostProjects
       })
     : undefined;
   if (!publish) {
-    console.warn('[index] POSTMYPOST_API_KEY/POSTMYPOST_PROJECT_ID not configured — mode:"publish" jobs will be marked publish_failed');
+    console.warn('[index] POSTMYPOST_API_KEY/POSTMYPOST_PROJECT_MARKETING_ID/POSTMYPOST_PROJECT_CORE_ID not configured — mode:"publish" jobs will be marked publish_failed');
   }
 
   const orchestrator = createGenerationOrchestrator({
