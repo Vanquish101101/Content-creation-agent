@@ -4,7 +4,7 @@ name: content-creation-agent
 services:
   content-creation-agent:
     build: .
-    image: content-creation-agent:v0.17.0
+    image: content-creation-agent:v0.17.1
     container_name: content-creation-agent
     restart: unless-stopped
     env_file: .env

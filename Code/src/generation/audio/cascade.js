@@ -21,6 +21,12 @@ export function createAudioCascade({
   elevenLabsApiKey,
   elevenLabsVoiceId,
   r2,
+  // Обогащение трендами (2026-07-12) — опционально, best-effort, зеркало
+  // паттерна enrich в generate.js. Без него (или когда wizard.trendContext
+  // отсутствует) text = wizard.description, как и раньше — поведение не
+  // меняется. См. buildScript.js — почему это отдельный LLM-шаг, а не
+  // компактная приписка, как у image/video.
+  buildScript,
   fetchImpl = fetch
 } = {}) {
   if (!deepgramApiKey) {
@@ -77,16 +83,17 @@ export function createAudioCascade({
   }
 
   return async function generateAudio(wizard) {
-    const text = wizard.description;
+    const script = buildScript ? await buildScript(wizard) : { text: wizard.description, costUsd: 0 };
+    const text = script.text;
     try {
       const buffer = await callDeepgram(text);
       const { r2Key, sizeBytes } = await uploadToR2(buffer, wizard.telegram_id);
-      return { r2Url: r2Key, sizeBytes, costUsd: estimateCost(text, DEEPGRAM_COST_PER_1K_CHARS), tier: 'cheap', model: 'deepgram-aura-2' };
+      return { r2Url: r2Key, sizeBytes, costUsd: estimateCost(text, DEEPGRAM_COST_PER_1K_CHARS) + script.costUsd, tier: 'cheap', model: 'deepgram-aura-2' };
     } catch (cheapErr) {
       console.warn(`[audioCascade] cheap tier (deepgram-aura-2) failed: ${cheapErr.message} — escalating to elevenlabs`);
       const buffer = await callElevenLabs(text);
       const { r2Key, sizeBytes } = await uploadToR2(buffer, wizard.telegram_id);
-      return { r2Url: r2Key, sizeBytes, costUsd: estimateCost(text, ELEVENLABS_COST_PER_1K_CHARS), tier: 'main', model: 'elevenlabs', escalatedFrom: 'deepgram-aura-2' };
+      return { r2Url: r2Key, sizeBytes, costUsd: estimateCost(text, ELEVENLABS_COST_PER_1K_CHARS) + script.costUsd, tier: 'main', model: 'elevenlabs', escalatedFrom: 'deepgram-aura-2' };
     }
   };
 }

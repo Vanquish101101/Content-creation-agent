@@ -128,3 +128,34 @@ test('throws when both tiers fail', async () => {
 
   await assert.rejects(() => cascade(WIZARD), /HTTP 500/);
 });
+
+// Найдено при доработке трендов для аудио (2026-07-12): без buildScript
+// text = wizard.description буквально, как и раньше (см. тест выше,
+// "sends the correct headers and body to Deepgram" — не менялся, тоже
+// проходит без правок). С buildScript — TTS получает переписанный текст,
+// а не сырое описание.
+test('uses buildScript(wizard).text for the TTS request when buildScript is provided', async () => {
+  const r2 = fakeR2();
+  const fetchImpl = fakeFetch();
+  const buildScript = async () => ({ text: 'Переписанный текст с трендами', costUsd: 0.0004 });
+  const cascade = createAudioCascade({ deepgramApiKey: 'd-key', elevenLabsApiKey: 'e-key', elevenLabsVoiceId: 'voice-1', r2, fetchImpl, buildScript });
+
+  await cascade(WIZARD);
+
+  const call = fetchImpl.calls.find((c) => c.url.includes('api.deepgram.com'));
+  const body = JSON.parse(call.options.body);
+  assert.equal(body.text, 'Переписанный текст с трендами');
+});
+
+test('adds buildScript(wizard).costUsd on top of the TTS cost', async () => {
+  const r2 = fakeR2();
+  const fetchImpl = fakeFetch();
+  const buildScript = async () => ({ text: WIZARD.description, costUsd: 0.01 });
+  const cascadeWithScript = createAudioCascade({ deepgramApiKey: 'd-key', elevenLabsApiKey: 'e-key', elevenLabsVoiceId: 'voice-1', r2, fetchImpl, buildScript });
+  const cascadeWithoutScript = createAudioCascade({ deepgramApiKey: 'd-key', elevenLabsApiKey: 'e-key', elevenLabsVoiceId: 'voice-1', r2: fakeR2(), fetchImpl });
+
+  const withScript = await cascadeWithScript(WIZARD);
+  const withoutScript = await cascadeWithoutScript(WIZARD);
+
+  assert.equal(withScript.costUsd, withoutScript.costUsd + 0.01);
+});

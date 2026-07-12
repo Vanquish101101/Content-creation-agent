@@ -9,6 +9,7 @@ import { createStorageClient } from './storage/createStorageClient.js';
 import { createInformationAnalysisClient } from './mcp-clients/informationAnalysisClient.js';
 import { createTrendEnrichment } from './enrichment/enrichWithTrends.js';
 import { createFactSelector } from './enrichment/selectRelevantFact.js';
+import { createScriptBuilder } from './generation/audio/buildScript.js';
 import { createAgent1Notifier } from './delivery/agent1Notifier.js';
 import { createPostMyPostClient } from './publish/postMyPostClient.js';
 import { createContentPublisher } from './publish/publishContent.js';
@@ -128,7 +129,15 @@ function requireEnv(name) {
         deepgramApiKey: process.env.DEEPGRAM_API_KEY || undefined,
         elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || undefined,
         elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID || undefined,
-        r2
+        r2,
+        // Тренды в аудио (2026-07-12) — тот же OPENROUTER_API_KEY, что и у
+        // текстового каскада и LLM-фильтра. См. generation/audio/buildScript.js
+        // — почему это отдельный переписывающий шаг, а не приписка к промпту,
+        // как у image/video.
+        buildScript: createScriptBuilder({
+          apiKey: requireEnv('OPENROUTER_API_KEY'),
+          heliconeApiKey: process.env.HELICONE_API_KEY || undefined
+        })
       },
       // Карусель (Слайс, добавлен 2026-07-11) — переиспользует Runway
       // (тот же ключ, что и у image), просто вызывает его несколько раз
