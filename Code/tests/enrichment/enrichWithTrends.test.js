@@ -10,6 +10,11 @@ const PLAIN_WIZARD = { use_trends: false, description: 'Короткий пос�
 // где ретраи не проверяются, держит их быстрыми и однозначными.
 const instantSleep = async () => {};
 
+// Большинство тестов не проверяют саму логику LLM-фильтра (это отдельно,
+// в selectRelevantFact.test.js) — им нужен просто предсказуемый стенд-ин,
+// зеркалирующий старое поведение "бери первый факт".
+const pickFirstFact = async (topic, facts) => facts[0];
+
 function fakeAnalysisClient(digestsOrDetails) {
   const digests = Array.isArray(digestsOrDetails.digest) ? digestsOrDetails.digest : null;
   const calls = { getDigest: 0, getDetail: [] };
@@ -27,9 +32,16 @@ function fakeAnalysisClient(digestsOrDetails) {
   };
 }
 
+test('throws when selectFact is not provided', () => {
+  assert.throws(
+    () => createTrendEnrichment({ db: makeFakeDb({}), analysisClient: fakeAnalysisClient({ digest: null }) }),
+    /selectFact is required/
+  );
+});
+
 test('returns null without calling Agent 3 when wizard.use_trends is not true', async () => {
   const analysisClient = fakeAnalysisClient({ digest: null, detail: null });
-  const enrich = createTrendEnrichment({ db: makeFakeDb({}), analysisClient, maxAttempts: 1, sleep: instantSleep });
+  const enrich = createTrendEnrichment({ db: makeFakeDb({}), analysisClient, selectFact: pickFirstFact, maxAttempts: 1, sleep: instantSleep });
 
   const result = await enrich(PLAIN_WIZARD);
 
@@ -37,13 +49,61 @@ test('returns null without calling Agent 3 when wizard.use_trends is not true', 
   assert.equal(analysisClient.calls.getDigest, 0);
 });
 
-test('returns null when the digest has no facts', async () => {
+test('returns null when the digest has no facts (selectFact never called)', async () => {
   const analysisClient = fakeAnalysisClient({ digest: { facts: [] }, detail: null });
-  const enrich = createTrendEnrichment({ db: makeFakeDb({}), analysisClient, maxAttempts: 1, sleep: instantSleep });
+  let selectFactCalled = false;
+  const selectFact = async () => { selectFactCalled = true; return null; };
+  const enrich = createTrendEnrichment({ db: makeFakeDb({}), analysisClient, selectFact, maxAttempts: 1, sleep: instantSleep });
 
   const result = await enrich(TREND_WIZARD);
 
   assert.equal(result, null);
+  assert.equal(selectFactCalled, false);
+});
+
+// Найдено живой проверкой 2026-07-10, исправлено 2026-07-11: раньше
+// facts[0] бралcя безусловно. Теперь selectFact решает — и если ни один
+// факт не подходит по теме, обогащения не будет вовсе (не откатываемся на
+// facts[0], это и есть тот баг, который фильтр исправляет).
+test('returns null when selectFact finds no relevant fact', async () => {
+  const analysisClient = fakeAnalysisClient({
+    digest: { facts: [{ claim_id: 'c1', detail_ref: 'c1', statement: 'Рецепт борща' }] },
+    detail: { sources: [{ source_id: 's1', ref: 'raw-job-1' }] }
+  });
+  const selectFact = async () => null;
+  const enrich = createTrendEnrichment({ db: makeFakeDb({}), analysisClient, selectFact, maxAttempts: 1, sleep: instantSleep });
+
+  const result = await enrich(TREND_WIZARD);
+
+  assert.equal(result, null);
+});
+
+test('passes wizard.description and digest.facts to selectFact, uses the fact it returns', async () => {
+  const facts = [
+    { claim_id: 'c0', detail_ref: 'c0', statement: 'Про крипту' },
+    { claim_id: 'c1', detail_ref: 'c1', statement: 'Про маркетинг' }
+  ];
+  const analysisClient = {
+    calls: { getDetail: [] },
+    async getDigest() { return { facts }; },
+    async getDetail(claimId) { this.calls.getDetail.push(claimId); return { sources: [{ source_id: 's1', ref: 'raw-job-1' }] }; }
+  };
+  const selectCalls = [];
+  const selectFact = async (topic, receivedFacts) => {
+    selectCalls.push({ topic, receivedFacts });
+    return facts[1]; // сознательно НЕ первый факт — проверяем, что берётся именно то, что вернул selectFact
+  };
+  const db = makeFakeDb({
+    parsing_results: () => ({ data: { job_id: 'raw-job-1', result_json: { combined_analysis: { content_ideas: ['маркетинговая идея'] } } }, error: null })
+  });
+  const enrich = createTrendEnrichment({ db, analysisClient, selectFact, maxAttempts: 1, sleep: instantSleep });
+
+  const result = await enrich(TREND_WIZARD);
+
+  assert.equal(selectCalls[0].topic, TREND_WIZARD.description);
+  assert.deepEqual(selectCalls[0].receivedFacts, facts);
+  assert.deepEqual(analysisClient.calls.getDetail, ['c1']); // detail_ref факта, который вернул selectFact, не facts[0]
+  assert.deepEqual(result, { content_ideas: ['маркетинговая идея'] });
 });
 
 test('returns null when the detail has no sources', async () => {
@@ -51,7 +111,7 @@ test('returns null when the detail has no sources', async () => {
     digest: { facts: [{ claim_id: 'c1', detail_ref: 'c1' }] },
     detail: { sources: [] }
   });
-  const enrich = createTrendEnrichment({ db: makeFakeDb({}), analysisClient, maxAttempts: 1, sleep: instantSleep });
+  const enrich = createTrendEnrichment({ db: makeFakeDb({}), analysisClient, selectFact: pickFirstFact, maxAttempts: 1, sleep: instantSleep });
 
   const result = await enrich(TREND_WIZARD);
 
@@ -83,7 +143,7 @@ test('returns combined_analysis from the raw parsing result when trends are requ
       };
     }
   });
-  const enrich = createTrendEnrichment({ db, analysisClient, maxAttempts: 1, sleep: instantSleep });
+  const enrich = createTrendEnrichment({ db, analysisClient, selectFact: pickFirstFact, maxAttempts: 1, sleep: instantSleep });
 
   const result = await enrich(TREND_WIZARD);
 
@@ -106,7 +166,7 @@ test('falls back to search_results and returns null when neither source has usab
     parsing_results: () => ({ data: { job_id: 'raw-job-1', result_json: {} }, error: null }),
     search_results: () => ({ data: null, error: { message: 'not found', code: 'PGRST116' } })
   });
-  const enrich = createTrendEnrichment({ db, analysisClient, maxAttempts: 1, sleep: instantSleep });
+  const enrich = createTrendEnrichment({ db, analysisClient, selectFact: pickFirstFact, maxAttempts: 1, sleep: instantSleep });
 
   const result = await enrich(TREND_WIZARD);
 
@@ -132,7 +192,7 @@ test('falls back to search_results and builds content_ideas when parsing_results
       };
     }
   });
-  const enrich = createTrendEnrichment({ db, analysisClient, maxAttempts: 1, sleep: instantSleep });
+  const enrich = createTrendEnrichment({ db, analysisClient, selectFact: pickFirstFact, maxAttempts: 1, sleep: instantSleep });
 
   const result = await enrich(TREND_WIZARD);
 
@@ -144,7 +204,7 @@ test('does not throw when Agent 3 is unreachable — returns null (enrichment is
     async getDigest() { throw new Error('connection refused'); },
     async getDetail() {}
   };
-  const enrich = createTrendEnrichment({ db: makeFakeDb({}), analysisClient, maxAttempts: 1, sleep: instantSleep });
+  const enrich = createTrendEnrichment({ db: makeFakeDb({}), analysisClient, selectFact: pickFirstFact, maxAttempts: 1, sleep: instantSleep });
 
   const result = await enrich(TREND_WIZARD);
 
@@ -169,6 +229,7 @@ test('retries up to maxAttempts, waiting delayMs between, until a real trend con
   const enrich = createTrendEnrichment({
     db,
     analysisClient,
+    selectFact: pickFirstFact,
     maxAttempts: 5,
     delayMs: 20000,
     sleep: async (ms) => { sleeps.push(ms); }
@@ -187,6 +248,7 @@ test('gives up and returns null after exhausting all retry attempts', async () =
   const enrich = createTrendEnrichment({
     db: makeFakeDb({}),
     analysisClient,
+    selectFact: pickFirstFact,
     maxAttempts: 3,
     delayMs: 1000,
     sleep: async (ms) => { sleeps.push(ms); }
@@ -219,7 +281,7 @@ test('a transient failure on one attempt does not abort retries — recovers on 
       error: null
     })
   });
-  const enrich = createTrendEnrichment({ db, analysisClient, maxAttempts: 3, delayMs: 5000, sleep: instantSleep });
+  const enrich = createTrendEnrichment({ db, analysisClient, selectFact: pickFirstFact, maxAttempts: 3, delayMs: 5000, sleep: instantSleep });
 
   const result = await enrich(TREND_WIZARD);
 

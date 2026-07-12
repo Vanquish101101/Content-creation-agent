@@ -1,6 +1,6 @@
 {
   "name": "content-creation-agent",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "description": "Агент создания контента — четвёртое, завершающее звено цепочки Marketing agency Project",
   "type": "module",
   "scripts": {

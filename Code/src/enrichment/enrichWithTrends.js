@@ -26,11 +26,14 @@
 // повторных попыток с паузой, прежде чем сдаться (best-effort — если
 // ничего не появилось, генерация продолжается без обогащения, без ошибки).
 //
-// MVP-упрощение, сохранённое из исходной версии: берётся ПЕРВЫЙ факт
-// дайджеста и его ПЕРВЫЙ источник, без семантического сопоставления с темой
-// wizard-запроса — реальное сопоставление по теме помечено как "задача
-// LLM-фильтра внутри Агента 4" в самой «07. Архитектура», §5.2, и намеренно
-// не реализовано в этом слайсе.
+// LLM-фильтр сопоставления темы (добавлено 2026-07-11, по прямому запросу
+// пользователя): до этого безусловно брался ПЕРВЫЙ факт дайджеста — реальное
+// сопоставление по теме было помечено как открытая "задача LLM-фильтра
+// внутри Агента 4" в «07. Архитектура», §5.2. Теперь `selectFact(topic,
+// facts)` (см. selectRelevantFact.js) выбирает факт, реально релевантный
+// теме wizard-запроса, либо возвращает null — и тогда обогащения не будет
+// вовсе (намеренно НЕ падаем обратно на facts[0]: это и есть тот баг,
+// который фильтр исправляет).
 import { fetchRawParsingResult, fetchRawSearchResult } from './rawDataReaders.js';
 import { buildTrendContextFromSearchRaw } from './buildTrendContextFromSearchRaw.js';
 
@@ -38,9 +41,14 @@ const DEFAULT_MAX_ATTEMPTS = 5;
 const DEFAULT_DELAY_MS = 20_000;
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function resolveTrendContext(db, analysisClient) {
+async function resolveTrendContext(db, analysisClient, selectFact, topic) {
   const digest = await analysisClient.getDigest();
-  const fact = digest?.facts?.[0];
+  const facts = digest?.facts;
+  if (!facts?.length) {
+    return null;
+  }
+
+  const fact = await selectFact(topic, facts);
   if (!fact) {
     return null;
   }
@@ -63,10 +71,15 @@ async function resolveTrendContext(db, analysisClient) {
 export function createTrendEnrichment({
   db,
   analysisClient,
+  selectFact,
   maxAttempts = DEFAULT_MAX_ATTEMPTS,
   delayMs = DEFAULT_DELAY_MS,
   sleep = defaultSleep
 }) {
+  if (!selectFact) {
+    throw new Error('createTrendEnrichment: selectFact is required (see selectRelevantFact.js)');
+  }
+
   return async function enrichWithTrends(wizard) {
     if (!wizard.use_trends) {
       return null;
@@ -74,7 +87,7 @@ export function createTrendEnrichment({
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const trendContext = await resolveTrendContext(db, analysisClient);
+        const trendContext = await resolveTrendContext(db, analysisClient, selectFact, wizard.description);
         if (trendContext) {
           return trendContext;
         }

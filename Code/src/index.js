@@ -8,6 +8,7 @@ import { createGenerationOrchestrator } from './generation/generate.js';
 import { createStorageClient } from './storage/createStorageClient.js';
 import { createInformationAnalysisClient } from './mcp-clients/informationAnalysisClient.js';
 import { createTrendEnrichment } from './enrichment/enrichWithTrends.js';
+import { createFactSelector } from './enrichment/selectRelevantFact.js';
 import { createAgent1Notifier } from './delivery/agent1Notifier.js';
 import { createPostMyPostClient } from './publish/postMyPostClient.js';
 import { createContentPublisher } from './publish/publishContent.js';
@@ -73,10 +74,17 @@ function requireEnv(name) {
   // Обогащение трендами (Слайс 7) — опционально: без INFORMATION_ANALYSIS_AGENT_URL
   // enrich не передаётся вовсе, generateContent просто ставит trendContext: null
   // (см. generate.js) — обычная генерация без обогащения, ничего не падает.
+  // selectFact — LLM-фильтр сопоставления темы (добавлено 2026-07-11), тот
+  // же OPENROUTER_API_KEY, что и у текстового каскада (уже обязателен везде
+  // в проекте, отдельный ключ не нужен).
   const enrich = process.env.INFORMATION_ANALYSIS_AGENT_URL
     ? createTrendEnrichment({
         db,
-        analysisClient: createInformationAnalysisClient({ baseUrl: process.env.INFORMATION_ANALYSIS_AGENT_URL })
+        analysisClient: createInformationAnalysisClient({ baseUrl: process.env.INFORMATION_ANALYSIS_AGENT_URL }),
+        selectFact: createFactSelector({
+          apiKey: requireEnv('OPENROUTER_API_KEY'),
+          heliconeApiKey: process.env.HELICONE_API_KEY || undefined
+        })
       })
     : undefined;
   if (!enrich) {
