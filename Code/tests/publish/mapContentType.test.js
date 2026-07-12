@@ -21,3 +21,7 @@ test('non-vertical video maps to publication_type 1 (post)', () => {
 test('audio throws — PostMyPost has no audio-post concept', () => {
   assert.throws(() => mapContentTypeToPublicationType('audio', null), /no audio-post concept/);
 });
+
+test('carousel maps to publication_type 1 (post) — PostMyPost carries multiple images via file_ids, not a separate publication_type', () => {
+  assert.equal(mapContentTypeToPublicationType('carousel', '11'), 1);
+});

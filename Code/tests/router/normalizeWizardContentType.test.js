@@ -24,6 +24,6 @@ test('passes already-correct router types through unchanged', () => {
   assert.equal(normalizeWizardContentType('audio'), 'audio');
 });
 
-test('passes unmapped types through unchanged (e.g. "carousel" — genuinely unsupported, not a naming mismatch)', () => {
+test('passes "carousel" through unchanged — its name already matches the router (Слайс, добавлен 2026-07-11)', () => {
   assert.equal(normalizeWizardContentType('carousel'), 'carousel');
 });

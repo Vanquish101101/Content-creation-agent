@@ -250,7 +250,7 @@ test('mode publish + moderation_mode false calls publish() and marks published o
   const result = await orchestrator.generateContent(job);
 
   assert.deepEqual(publishArgs.wizard, job.wizard);
-  assert.equal(publishArgs.r2Url, 'gc-1/img.png');
+  assert.deepEqual(publishArgs.r2Urls, ['gc-1/img.png']);
   assert.equal(result.status, 'published');
   assert.equal(updates.at(-1).status, 'published');
 });
@@ -485,4 +485,109 @@ test('marks the record as error and rethrows when generation fails', async () =>
   assert.equal(updates[0].status, 'processing');
   assert.equal(updates[1].status, 'error');
   assert.equal(updates[1].metadata.error, 'LLM HTTP 500');
+});
+
+// --- Карусель (2026-07-11): result.files (несколько файлов), а не
+// result.r2Url/sizeBytes (один файл) — весь путь ниже (persistence/квота/
+// модерация/публикация/отчёт) должен работать с этим одинаково. ---
+
+const CAROUSEL_FILES = [
+  { r2Url: 'gc-1/carousel-0.png', sizeBytes: 1000 },
+  { r2Url: 'gc-1/carousel-1.png', sizeBytes: 2000 },
+  { r2Url: 'gc-1/carousel-2.png', sizeBytes: 3000 }
+];
+
+test('markDone stores the first file as r2_url and the SUM of sizeBytes across all files (carousel)', async () => {
+  const updates = [];
+  const db = makeDb(updates);
+  const fakeRoute = () => async () => ({ costUsd: 0.06, tier: 'cheap', model: 'gen4_image_turbo', files: CAROUSEL_FILES });
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(updates[1].r2_url, 'gc-1/carousel-0.png');
+  assert.equal(updates[1].size_bytes, 6000);
+  assert.deepEqual(updates[1].metadata.files, CAROUSEL_FILES);
+});
+
+test('runs the quota check for a carousel (multiple files, not just result.r2Url)', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.06, tier: 'cheap', model: 'm', files: CAROUSEL_FILES });
+  let quotaCheckCalled = false;
+  const orchestrator = createGenerationOrchestrator({
+    db,
+    route: fakeRoute,
+    notifyAgent1: async () => {},
+    _checkQuotaAndWarn: async () => { quotaCheckCalled = true; return null; }
+  });
+
+  await orchestrator.generateContent(JOB);
+
+  assert.equal(quotaCheckCalled, true);
+});
+
+test('passes every file as r2Urls to publish() for a carousel', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.06, tier: 'cheap', model: 'm', files: CAROUSEL_FILES });
+  let publishArgs = null;
+  const publish = async (args) => { publishArgs = args; return [{ network: 'instagram', accountId: 1, status: 'success' }]; };
+  const job = { ...JOB, mode: 'publish', moderation_mode: false };
+  const orchestrator = createGenerationOrchestrator({ db, route: fakeRoute, publish, _checkQuotaAndWarn: async () => null });
+
+  await orchestrator.generateContent(job);
+
+  assert.deepEqual(publishArgs.r2Urls, ['gc-1/carousel-0.png', 'gc-1/carousel-1.png', 'gc-1/carousel-2.png']);
+});
+
+test('moderation_request includes downloadUrls (all files) alongside the single downloadUrl for a carousel', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.06, tier: 'cheap', model: 'm', files: CAROUSEL_FILES });
+  const notifyCalls = [];
+  const r2 = { getSignedDownloadUrl: async (key) => `https://signed.example/${key}` };
+  const job = { ...JOB, mode: 'publish', moderation_mode: true };
+  const orchestrator = createGenerationOrchestrator({
+    db, route: fakeRoute, r2, notifyAgent1: async (msg) => notifyCalls.push(msg), _checkQuotaAndWarn: async () => null
+  });
+
+  await orchestrator.generateContent(job);
+
+  const moderationCall = notifyCalls.find((m) => m.messageType === 'moderation_request');
+  assert.equal(moderationCall.payload.downloadUrl, 'https://signed.example/gc-1/carousel-0.png');
+  assert.deepEqual(moderationCall.payload.downloadUrls, [
+    'https://signed.example/gc-1/carousel-0.png',
+    'https://signed.example/gc-1/carousel-1.png',
+    'https://signed.example/gc-1/carousel-2.png'
+  ]);
+});
+
+test('content_ready report includes downloadUrls and the summed sizeBytes for a carousel', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.06, tier: 'cheap', model: 'm', files: CAROUSEL_FILES });
+  const notifyCalls = [];
+  const r2 = { getSignedDownloadUrl: async (key) => `https://signed.example/${key}` };
+  const orchestrator = createGenerationOrchestrator({
+    db, route: fakeRoute, r2, notifyAgent1: async (msg) => notifyCalls.push(msg), _checkQuotaAndWarn: async () => null
+  });
+
+  await orchestrator.generateContent(JOB);
+
+  const contentReady = notifyCalls.find((m) => m.messageType === 'content_ready');
+  assert.equal(contentReady.payload.sizeBytes, 6000);
+  assert.equal(contentReady.payload.downloadUrl, 'https://signed.example/gc-1/carousel-0.png');
+  assert.equal(contentReady.payload.downloadUrls.length, 3);
+});
+
+test('does not include downloadUrls (plural) for a single-file result — keeps the payload unchanged for the common case', async () => {
+  const db = makeDb([]);
+  const fakeRoute = () => async () => ({ costUsd: 0.4, tier: 'cheap', model: 'm', r2Url: 'gc-1/video.mp4', sizeBytes: 1000 });
+  const notifyCalls = [];
+  const r2 = { getSignedDownloadUrl: async (key) => `https://signed.example/${key}` };
+  const orchestrator = createGenerationOrchestrator({
+    db, route: fakeRoute, r2, notifyAgent1: async (msg) => notifyCalls.push(msg), _checkQuotaAndWarn: async () => null
+  });
+
+  await orchestrator.generateContent(JOB);
+
+  const contentReady = notifyCalls.find((m) => m.messageType === 'content_ready');
+  assert.equal('downloadUrls' in contentReady.payload, false);
 });

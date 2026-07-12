@@ -129,6 +129,13 @@ function requireEnv(name) {
         elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || undefined,
         elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID || undefined,
         r2
+      },
+      // Карусель (Слайс, добавлен 2026-07-11) — переиспользует Runway
+      // (тот же ключ, что и у image), просто вызывает его несколько раз
+      // подряд — см. generation/carousel/cascade.js.
+      carousel: {
+        apiKey: process.env.RUNWAY_API_KEY || undefined,
+        r2
       }
     }
   });

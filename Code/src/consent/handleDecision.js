@@ -39,12 +39,18 @@ async function handlePublishModeration(db, r2, publish, notifyAgent1, row, gener
     return;
   }
 
+  // Карусель (2026-07-11) — несколько файлов на запись (row.metadata.files),
+  // зеркало той же нормализации, что и в generate.js/deleteContent.js.
+  // Записи, созданные до этой доработки, не имеют metadata.files — тогда
+  // единственный файл берётся из r2_url, как и раньше.
+  const files = row.metadata?.files?.length ? row.metadata.files : (row.r2_url ? [{ r2Url: row.r2_url }] : []);
+
   let publishReport;
   if (!publish) {
     publishReport = [{ network: wizard.network, accountId: null, status: 'error', reason: 'PostMyPost not configured' }];
   } else {
     try {
-      publishReport = await publish({ wizard, r2Url: row.r2_url });
+      publishReport = await publish({ wizard, r2Urls: files.map((f) => f.r2Url) });
     } catch (err) {
       publishReport = [{ network: wizard.network, accountId: null, status: 'error', reason: err.message }];
     }
@@ -58,8 +64,12 @@ async function handlePublishModeration(db, r2, publish, notifyAgent1, row, gener
         result: { text: row.metadata?.text ?? null, sizeBytes: row.size_bytes, costUsd: row.cost_usd },
         publishReport
       });
-      if (row.r2_url && r2) {
-        report.downloadUrl = await r2.getSignedDownloadUrl(row.r2_url);
+      if (files.length > 0 && r2) {
+        const downloadUrls = await Promise.all(files.map((f) => r2.getSignedDownloadUrl(f.r2Url).catch(() => null)));
+        report.downloadUrl = downloadUrls[0] ?? null;
+        if (files.length > 1) {
+          report.downloadUrls = downloadUrls;
+        }
       }
       await notifyAgent1({ telegramId: row.telegram_id, messageType: 'content_ready', generatedContentId, payload: report });
     } catch (err) {

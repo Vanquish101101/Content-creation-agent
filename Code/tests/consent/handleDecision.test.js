@@ -68,12 +68,45 @@ test('publish_moderation + approved reconstructs the wizard from metadata, publi
   await handleDecision({ generatedContentId: 'gc-1', decisionType: 'publish_moderation', decision: 'approved' });
 
   assert.deepEqual(publishArgs.wizard, row.metadata.wizard);
-  assert.equal(publishArgs.r2Url, 'gc-1/img.png');
+  assert.deepEqual(publishArgs.r2Urls, ['gc-1/img.png']);
   assert.ok(updates.some((u) => u.status === 'published'));
   assert.equal(notifyCalls.length, 1);
   assert.equal(notifyCalls[0].messageType, 'content_ready');
   assert.equal(notifyCalls[0].telegramId, 123);
   assert.equal(notifyCalls[0].payload.downloadUrl, 'https://signed.example/gc-1/img.png');
+});
+
+// Найдено при добавлении "Карусели" (2026-07-11): подтверждённая модерацией
+// публикация карусели должна отправить ВСЕ файлы в publish(), не только
+// первый (row.r2_url) — иначе после подтверждения ушла бы только 1 из N
+// картинок.
+test('publish_moderation + approved for a carousel publishes every file and reports all downloadUrls', async () => {
+  const updates = [];
+  const row = {
+    id: 'gc-1',
+    status: 'pending_moderation',
+    r2_url: 'gc-1/carousel-0.png',
+    telegram_id: 123,
+    metadata: {
+      wizard: { network: 'instagram', content_type: 'carousel', description: 'x' },
+      text: null,
+      files: [{ r2Url: 'gc-1/carousel-0.png' }, { r2Url: 'gc-1/carousel-1.png' }, { r2Url: 'gc-1/carousel-2.png' }]
+    },
+    size_bytes: 6000,
+    cost_usd: 0.06
+  };
+  const db = makeDb(row, updates);
+  let publishArgs = null;
+  const publish = async (args) => { publishArgs = args; return [{ network: 'instagram', accountId: 1, status: 'success' }]; };
+  const notifyCalls = [];
+  const r2 = { getSignedDownloadUrl: async (key) => `https://signed.example/${key}` };
+  const handleDecision = createDecisionHandler({ db, r2, publish, notifyAgent1: async (m) => notifyCalls.push(m) });
+
+  await handleDecision({ generatedContentId: 'gc-1', decisionType: 'publish_moderation', decision: 'approved' });
+
+  assert.deepEqual(publishArgs.r2Urls, ['gc-1/carousel-0.png', 'gc-1/carousel-1.png', 'gc-1/carousel-2.png']);
+  assert.equal(notifyCalls[0].payload.downloadUrl, 'https://signed.example/gc-1/carousel-0.png');
+  assert.equal(notifyCalls[0].payload.downloadUrls.length, 3);
 });
 
 test('publish_moderation + rejected marks publish_rejected without calling publish', async () => {

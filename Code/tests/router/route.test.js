@@ -47,9 +47,21 @@ test('routes "audio" to a working generator function using deps.audio (not deps.
   assert.equal(typeof generate, 'function');
 });
 
+test('routes "carousel" to a working generator function using deps.carousel (not deps.image)', () => {
+  // carousel добавлен 2026-07-11 — до этого был единственным примером
+  // "truly unknown" content_type в этом файле тестов.
+  const generate = routeByContentType('carousel', {
+    image: { apiKey: 'runway-key', r2: {} },
+    carousel: { apiKey: 'runway-key-2', r2: {} }
+  });
+
+  assert.equal(typeof generate, 'function');
+});
+
 test('throws for an unknown content type', () => {
-  // text/image/video/audio (весь MVP-скоп из «04. Брейншторм», §1) теперь
-  // реализованы — "not implemented yet" больше не подходящая формулировка ни
-  // для одного реального типа контента, только для truly unknown.
-  assert.throws(() => routeByContentType('carousel', {}), /unknown content_type/);
+  // text/image/video/audio/carousel (весь MVP-скоп из «04. Брейншторм», §1,
+  // плюс carousel добавлен 2026-07-11) теперь реализованы — "not implemented
+  // yet" больше не подходящая формулировка ни для одного реального типа
+  // контента, только для truly unknown.
+  assert.throws(() => routeByContentType('reels-story-highlight', {}), /unknown content_type/);
 });
