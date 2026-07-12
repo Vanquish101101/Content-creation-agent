@@ -20,6 +20,8 @@
 // затем GET /v1/files/retrieve?file_id -> download_url (эфемерная, скачать
 // сразу и перезалить в R2, не хранить ссылку саму по себе).
 
+import { buildTrendParts } from '../buildTrendParts.js';
+
 const MINIMAX_API_URL = 'https://api.minimax.io/v1';
 const CHEAP_SETTINGS = { model: 'MiniMax-Hailuo-02', resolution: '768P', fastPretreatment: true };
 const MAIN_SETTINGS = { model: 'MiniMax-Hailuo-2.3', resolution: '1080P', fastPretreatment: false };
@@ -34,6 +36,18 @@ const APPROX_COST_USD = { [CHEAP_SETTINGS.model]: 0.1, [MAIN_SETTINGS.model]: 0.
 
 function defaultSleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Обогащение трендами (Слайс 7) — до 2026-07-10 подключено только к
+// text-каскаду; wizard.trendContext молча игнорировался здесь. MiniMax
+// принимает единый текстовый промпт, поэтому части trendContext добавляются
+// как компактное дополнение к описанию, зеркало image/cascade.js.
+function buildPromptWithTrends(description, trendContext) {
+  const parts = buildTrendParts(trendContext);
+  if (!parts.length) {
+    return description;
+  }
+  return `${description}. Учитывай стиль похожего успешного контента (не копируй дословно): ${parts.join('; ')}.`;
 }
 
 export function createVideoCascade({
@@ -64,7 +78,7 @@ export function createVideoCascade({
       headers: headers(),
       body: JSON.stringify({
         model: settings.model,
-        prompt: wizard.description,
+        prompt: buildPromptWithTrends(wizard.description, wizard.trendContext),
         duration: DURATION_SECONDS,
         resolution: settings.resolution,
         fast_pretreatment: settings.fastPretreatment

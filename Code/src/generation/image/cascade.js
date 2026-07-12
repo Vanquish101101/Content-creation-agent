@@ -20,6 +20,8 @@
 // изображений); если реальный вызов вернёт 400 из-за этого — первое, что
 // нужно перепроверить.
 
+import { buildTrendParts } from '../buildTrendParts.js';
+
 const RUNWAY_API_URL = 'https://api.dev.runwayml.com/v1';
 const RUNWAY_VERSION = '2024-11-06';
 const CHEAP_MODEL = 'gen4_image_turbo';
@@ -33,6 +35,20 @@ const APPROX_COST_USD = { [CHEAP_MODEL]: 0.02, [MAIN_MODEL]: 0.2 };
 
 function defaultSleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Обогащение трендами (Слайс 7) — до 2026-07-10 подключено только к
+// text-каскаду; wizard.trendContext молча игнорировался здесь. Runway
+// принимает единый текстовый промпт (не структурированный чат, как у LLM),
+// поэтому части trendContext добавляются как компактное дополнение к
+// описанию пользователя, а не многострочным блоком с заголовками (формат
+// text/cascade.js), см. buildTrendParts.js.
+function buildPromptWithTrends(description, trendContext) {
+  const parts = buildTrendParts(trendContext);
+  if (!parts.length) {
+    return description;
+  }
+  return `${description}. Учитывай стиль похожего успешного контента (не копируй дословно): ${parts.join('; ')}.`;
 }
 
 export function createImageCascade({
@@ -66,7 +82,7 @@ export function createImageCascade({
       headers: headers(),
       body: JSON.stringify({
         model,
-        promptText: wizard.description,
+        promptText: buildPromptWithTrends(wizard.description, wizard.trendContext),
         ratio: DEFAULT_RATIO
       })
     });

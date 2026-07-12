@@ -170,3 +170,35 @@ test('throws a timeout error if the task never leaves PENDING within maxPollAtte
 
   await assert.rejects(() => cascade(WIZARD), /timed out/);
 });
+
+// Найдено живой проверкой 2026-07-10: trendContext (Слайс 7) был подключён
+// только к text-каскаду — Runway молча игнорировал его, даже когда
+// пользователь явно просил опору на тренды.
+test('includes trendContext parts in promptText when present', async () => {
+  const r2 = fakeR2();
+  const fetchImpl = fakeFetch({
+    taskSequence: [{ id: 'task-1', status: 'SUCCEEDED', output: ['https://ephemeral.runway.example/out.png'] }]
+  });
+  const cascade = createImageCascade({ apiKey: 'test-key', r2, fetchImpl, _sleep: async () => {} });
+  const wizardWithTrends = { ...WIZARD, trendContext: { content_ideas: ['формат до/после'], hooks: ['Ты не поверишь'] } };
+
+  await cascade(wizardWithTrends);
+
+  const body = JSON.parse(fetchImpl.calls[0].options.body);
+  assert.match(body.promptText, /Обложка поста про скидку 20% на услуги/);
+  assert.match(body.promptText, /формат до\/после/);
+  assert.match(body.promptText, /Ты не поверишь/);
+});
+
+test('promptText is exactly wizard.description when trendContext is absent', async () => {
+  const r2 = fakeR2();
+  const fetchImpl = fakeFetch({
+    taskSequence: [{ id: 'task-1', status: 'SUCCEEDED', output: ['https://ephemeral.runway.example/out.png'] }]
+  });
+  const cascade = createImageCascade({ apiKey: 'test-key', r2, fetchImpl, _sleep: async () => {} });
+
+  await cascade(WIZARD);
+
+  const body = JSON.parse(fetchImpl.calls[0].options.body);
+  assert.equal(body.promptText, WIZARD.description);
+});

@@ -172,3 +172,55 @@ test('throws a timeout error if the task never leaves Processing within maxPollA
 
   await assert.rejects(() => cascade(WIZARD), /timed out/);
 });
+
+// Найдено живой проверкой 2026-07-10: trendContext (Слайс 7) был подключён
+// только к text-каскаду — MiniMax молча игнорировал его, даже когда
+// пользователь явно просил опору на тренды.
+test('includes trendContext parts in the prompt when present', async () => {
+  const r2 = fakeR2();
+  let postBody = null;
+  const fetchImpl = async (url, options) => {
+    if (url.endsWith('/video_generation')) {
+      postBody = JSON.parse(options.body);
+      return { ok: true, status: 200, json: async () => ({ task_id: 'task-1', base_resp: { status_code: 0, status_msg: 'success' } }) };
+    }
+    if (url.includes('/query/video_generation')) {
+      return { ok: true, status: 200, json: async () => ({ task_id: 'task-1', status: 'Success', file_id: 'file-1' }) };
+    }
+    if (url.includes('/files/retrieve')) {
+      return { ok: true, status: 200, json: async () => ({ file: { file_id: 'file-1', download_url: 'https://cdn.minimax.example/out.mp4' } }) };
+    }
+    return { ok: true, status: 200, arrayBuffer: async () => Buffer.from('bytes') };
+  };
+  const cascade = createVideoCascade({ apiKey: 'test-key', r2, fetchImpl, _sleep: async () => {} });
+  const wizardWithTrends = { ...WIZARD, trendContext: { content_ideas: ['формат до/после'], hooks: ['Ты не поверишь'] } };
+
+  await cascade(wizardWithTrends);
+
+  assert.match(postBody.prompt, /Короткий ролик про скидку 20% на услуги/);
+  assert.match(postBody.prompt, /формат до\/после/);
+  assert.match(postBody.prompt, /Ты не поверишь/);
+});
+
+test('prompt is exactly wizard.description when trendContext is absent', async () => {
+  const r2 = fakeR2();
+  let postBody = null;
+  const fetchImpl = async (url, options) => {
+    if (url.endsWith('/video_generation')) {
+      postBody = JSON.parse(options.body);
+      return { ok: true, status: 200, json: async () => ({ task_id: 'task-1', base_resp: { status_code: 0, status_msg: 'success' } }) };
+    }
+    if (url.includes('/query/video_generation')) {
+      return { ok: true, status: 200, json: async () => ({ task_id: 'task-1', status: 'Success', file_id: 'file-1' }) };
+    }
+    if (url.includes('/files/retrieve')) {
+      return { ok: true, status: 200, json: async () => ({ file: { file_id: 'file-1', download_url: 'https://cdn.minimax.example/out.mp4' } }) };
+    }
+    return { ok: true, status: 200, arrayBuffer: async () => Buffer.from('bytes') };
+  };
+  const cascade = createVideoCascade({ apiKey: 'test-key', r2, fetchImpl, _sleep: async () => {} });
+
+  await cascade(WIZARD);
+
+  assert.equal(postBody.prompt, WIZARD.description);
+});

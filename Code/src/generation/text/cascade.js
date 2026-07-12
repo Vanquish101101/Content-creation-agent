@@ -5,6 +5,7 @@
 // «простой случай» в терминологии Агента 2 (нет объективного эталона для
 // параллельного сравнения) — обычный каскад, без LLM-судьи.
 // См. «05. ТЗ», §4.1, «07. Архитектура (Бекенд).md», §8.3.
+import { buildTrendParts } from '../buildTrendParts.js';
 
 const CHEAP_MODEL = 'anthropic/claude-haiku-4-5';
 const MAIN_MODEL = 'anthropic/claude-sonnet-4-6';
@@ -84,15 +85,7 @@ ${buildTrendSection(wizard.trendContext)}
 // буквальное содержание — сохраняем механику, применяем к материалу
 // пользователя. См. «02. Анализ», §2.4 (Hook–Retention–Payoff).
 function buildTrendSection(trendContext) {
-  if (!trendContext) {
-    return '';
-  }
-  const parts = [];
-  if (trendContext.hooks?.length) parts.push(`Хук (открывающая фраза, похожий стиль): ${trendContext.hooks.join('; ')}`);
-  if (trendContext.triggers?.length) parts.push(`Триггеры вовлечения: ${trendContext.triggers.join('; ')}`);
-  if (trendContext.offers?.length) parts.push(`Оффер/призыв: ${trendContext.offers.join('; ')}`);
-  if (trendContext.viral_reasons?.length) parts.push(`Что делает контент виральным: ${trendContext.viral_reasons.join('; ')}`);
-  if (trendContext.content_ideas?.length) parts.push(`Идеи подачи: ${trendContext.content_ideas.join('; ')}`);
+  const parts = buildTrendParts(trendContext);
   if (!parts.length) {
     return '';
   }
